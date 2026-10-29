@@ -1,0 +1,937 @@
+@import "tailwindcss";
+
+/* Android & iOS Safe Area Padding Support */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
+
+html, body {
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  overscroll-behavior-y: contain;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Custom Scrollbars for dark theme (default) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #020617;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Disabled components across all themes */
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   🔒 SOFT ROSE LOCK BADGE (DARK MODE — DEFAULT)
+   Latar badge: #3A2434
+   Border badge: #54283F
+   Ikon gembok badge: #FDA4AF
+   ───────────────────────────────────────────────────────────── */
+.soft-rose-lock-badge {
+  background-color: #3A2434;
+  border-color: #54283F;
+  color: #FDA4AF;
+}
+.soft-rose-lock-badge svg {
+  color: #FDA4AF;
+}
+
+.is-active-folder .soft-rose-lock-badge {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #FFFFFF;
+}
+.is-active-folder .soft-rose-lock-badge svg {
+  color: #FFFFFF;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ☀️ LIGHT MODE PALETTE & SYSTEM REFINEMENTS — LAVENDER MIST
+   Sidebar utama: #E8E5FF
+   Panel ringkasan koleksi: #F0EDFF
+   Latar utama aplikasi: #F7F5FF
+   Header: #FFFFFF
+   Kartu prompt: #FFFFFF
+   Latar pratinjau prompt: #F4F2FF
+   Border utama: #DED8FF
+   Teks utama: #202044
+   Teks sekunder: #64648A
+   Teks pendukung: #8585A5
+   Aksen utama & Tombol: #6D3DF5
+   Teks tombol utama: #FFFFFF
+   ───────────────────────────────────────────────────────────── */
+html.light,
+html[data-theme="light"],
+body.light,
+[data-theme="light"] {
+  /* Global Design Tokens — Lavender Mist */
+  --color-slate-950: #F7F5FF; /* Latar utama aplikasi */
+  --color-slate-900: #FFFFFF; /* Header, Kartu prompt, Modals */
+  --color-slate-800: #F4F2FF; /* Latar pratinjau prompt, panel sekunder, chip */
+  --color-slate-700: #DED8FF; /* Border utama & subtle dividers */
+  --color-slate-600: #8585A5; /* Teks pendukung / muted */
+  --color-slate-500: #64648A; /* Teks sekunder */
+  --color-slate-400: #64648A; /* Teks sekunder */
+  --color-slate-300: #202044; /* Teks normal konten */
+  --color-slate-200: #202044; /* Teks kontras tinggi */
+  --color-slate-100: #202044; /* Teks utama konten */
+
+  /* Primary Accent: #6D3DF5 */
+  --color-indigo-600: #6D3DF5;
+  --color-indigo-500: #7C4DFF;
+  --color-indigo-400: #6D3DF5;
+  --color-indigo-950: #F4F2FF;
+  --color-indigo-900: #E8E5FF;
+
+  color-scheme: light;
+}
+
+/* Light mode scrollbars (area konten utama) */
+html.light ::-webkit-scrollbar-track,
+html[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #F7F5FF;
+}
+
+html.light ::-webkit-scrollbar-thumb,
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #DED8FF;
+  border-radius: 9999px;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover,
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #CEC7FF;
+}
+
+/* Global Light Mode Base */
+html.light,
+html.light body {
+  background-color: #F7F5FF !important;
+  color: #202044 !important;
+}
+
+/* Header in Light Mode: Tetap Bersih Putih (#FFFFFF) dengan border Lavender */
+html.light header {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  border-bottom-color: #DED8FF !important;
+  box-shadow: 0 1px 3px 0 rgba(32, 32, 68, 0.04);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   🎨 COLORFUL PASTEL TOP BAR BUTTONS (LIGHT MODE)
+   - AI Assistant: Lavender #EDE5FF
+   - Backup & Restore: Biru pastel #DFF0FF
+   - Install App: Mint #DDF8EC
+   - Kunci Cepat: Pink pastel #FFE3EC
+   - Settings: Periwinkle #E5E9FF
+   - Tema: Kuning pastel #FFF4CF
+   - Folder: Peach #FFE9D8
+   - + Prompt: Ungu utama #6D3DF5 (Paling menonjol, teks putih)
+   - Grid / List / Tabel: Lavender muda #F0EDFF
+   - Kolom pencarian: Putih #FFFFFF dengan border #DED8FF
+   ───────────────────────────────────────────────────────────── */
+
+/* 1. ✨ AI Assistant — Lavender (#EDE5FF) */
+html.light #desktop-qa-ai-assistant {
+  background-color: #EDE5FF !important;
+  border-color: #D8CAFF !important;
+  color: #3B1A7A !important;
+  box-shadow: 0 1px 2px rgba(109, 61, 245, 0.08) !important;
+}
+html.light #desktop-qa-ai-assistant:hover {
+  background-color: #E2D5FF !important;
+  border-color: #C5B0FF !important;
+  box-shadow: 0 2px 6px rgba(109, 61, 245, 0.15) !important;
+}
+html.light #desktop-qa-ai-assistant svg {
+  color: #6D3DF5 !important;
+}
+html.light #desktop-qa-ai-assistant span {
+  color: #3B1A7A !important;
+  font-weight: 600 !important;
+}
+
+/* 2. 💾 Backup & Restore — Biru Pastel (#DFF0FF) */
+html.light #desktop-qa-backup-restore {
+  background-color: #DFF0FF !important;
+  border-color: #BAE0FF !important;
+  color: #0C4A6E !important;
+  box-shadow: 0 1px 2px rgba(2, 132, 199, 0.08) !important;
+}
+html.light #desktop-qa-backup-restore:hover {
+  background-color: #CFE7FF !important;
+  border-color: #99D1FF !important;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.15) !important;
+}
+html.light #desktop-qa-backup-restore svg {
+  color: #0284C7 !important;
+}
+html.light #desktop-qa-backup-restore span {
+  color: #0C4A6E !important;
+  font-weight: 600 !important;
+}
+
+/* 3. 📲 Install App — Mint (#DDF8EC) */
+html.light #desktop-qa-install-app {
+  background-color: #DDF8EC !important;
+  border-color: #BAF0D3 !important;
+  color: #064E3B !important;
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.08) !important;
+}
+html.light #desktop-qa-install-app:hover {
+  background-color: #CCF3E0 !important;
+  border-color: #9BE4BF !important;
+  box-shadow: 0 2px 6px rgba(5, 150, 105, 0.15) !important;
+}
+html.light #desktop-qa-install-app svg {
+  color: #059669 !important;
+}
+html.light #desktop-qa-install-app span {
+  color: #064E3B !important;
+  font-weight: 600 !important;
+}
+
+/* 4. 🔒 Kunci Cepat — Pink Pastel (#FFE3EC) */
+html.light #desktop-qa-quick-lock {
+  background-color: #FFE3EC !important;
+  border-color: #FFC2D4 !important;
+  color: #881337 !important;
+  box-shadow: 0 1px 2px rgba(225, 29, 72, 0.08) !important;
+}
+html.light #desktop-qa-quick-lock:hover {
+  background-color: #FFD3E1 !important;
+  border-color: #FFAEC5 !important;
+  box-shadow: 0 2px 6px rgba(225, 29, 72, 0.15) !important;
+}
+html.light #desktop-qa-quick-lock svg {
+  color: #E11D48 !important;
+}
+html.light #desktop-qa-quick-lock span {
+  color: #881337 !important;
+  font-weight: 600 !important;
+}
+
+/* 5. ⚙️ Settings — Periwinkle (#E5E9FF) */
+html.light #desktop-qa-settings {
+  background-color: #E5E9FF !important;
+  border-color: #CAD3FF !important;
+  color: #312E81 !important;
+  box-shadow: 0 1px 2px rgba(79, 70, 229, 0.08) !important;
+}
+html.light #desktop-qa-settings:hover {
+  background-color: #D5DCFF !important;
+  border-color: #B2BFFF !important;
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.15) !important;
+}
+html.light #desktop-qa-settings svg {
+  color: #4F46E5 !important;
+}
+html.light #desktop-qa-settings span {
+  color: #312E81 !important;
+  font-weight: 600 !important;
+}
+
+/* 6. ☀️ Tema (Light/Dark Toggle) — Kuning Pastel (#FFF4CF) */
+html.light #desktop-qa-theme-toggle {
+  background-color: #FFF4CF !important;
+  border-color: #FFE89E !important;
+  color: #78350F !important;
+  box-shadow: 0 1px 2px rgba(217, 119, 6, 0.08) !important;
+}
+html.light #desktop-qa-theme-toggle:hover {
+  background-color: #FFEAA6 !important;
+  border-color: #FFDD73 !important;
+  box-shadow: 0 2px 6px rgba(217, 119, 6, 0.15) !important;
+}
+html.light #desktop-qa-theme-toggle svg {
+  color: #D97706 !important;
+}
+html.light #desktop-qa-theme-toggle span {
+  color: #78350F !important;
+  font-weight: 600 !important;
+}
+
+/* 7. 📁 Folder — Peach (#FFE9D8) */
+html.light #desktop-qa-folder {
+  background-color: #FFE9D8 !important;
+  border-color: #FFD3B3 !important;
+  color: #7C2D12 !important;
+  box-shadow: 0 1px 2px rgba(234, 88, 12, 0.08) !important;
+}
+html.light #desktop-qa-folder:hover {
+  background-color: #FFDEC3 !important;
+  border-color: #FFC49A !important;
+  box-shadow: 0 2px 6px rgba(234, 88, 12, 0.15) !important;
+}
+html.light #desktop-qa-folder svg {
+  color: #EA580C !important;
+}
+html.light #desktop-qa-folder span {
+  color: #7C2D12 !important;
+  font-weight: 600 !important;
+}
+
+/* 8. ➕ Prompt Utama — Ungu (#6D3DF5) dengan Teks & Ikon Putih */
+html.light #desktop-qa-new-prompt {
+  background: #6D3DF5 !important;
+  border-color: #5B2FD4 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 3px 10px rgba(109, 61, 245, 0.35) !important;
+}
+html.light #desktop-qa-new-prompt:hover {
+  background: #5B2FD4 !important;
+  border-color: #4A22BF !important;
+  box-shadow: 0 4px 14px rgba(109, 61, 245, 0.45) !important;
+}
+html.light #desktop-qa-new-prompt svg,
+html.light #desktop-qa-new-prompt span {
+  color: #FFFFFF !important;
+}
+
+/* 9. 🔲 Kontrol Tampilan (Grid / List / Tabel) — Lavender Muda (#F0EDFF) */
+html.light #desktop-view-switcher {
+  background-color: #F0EDFF !important;
+  border-color: #DED8FF !important;
+  box-shadow: 0 1px 2px rgba(32, 32, 68, 0.04) !important;
+}
+html.light #desktop-view-switcher button.bg-indigo-600 {
+  background-color: #6D3DF5 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 2px 6px rgba(109, 61, 245, 0.25) !important;
+}
+html.light #desktop-view-switcher button.bg-indigo-600 svg,
+html.light #desktop-view-switcher button.bg-indigo-600 span {
+  color: #FFFFFF !important;
+}
+html.light #desktop-view-switcher button:not(.bg-indigo-600) {
+  color: #64648A !important;
+}
+html.light #desktop-view-switcher button:not(.bg-indigo-600) svg {
+  color: #64648A !important;
+}
+html.light #desktop-view-switcher button:not(.bg-indigo-600):hover {
+  background-color: #E5E0FF !important;
+  color: #202044 !important;
+}
+html.light #desktop-view-switcher button:not(.bg-indigo-600):hover svg {
+  color: #202044 !important;
+}
+
+/* 10. 🔍 Kolom Pencarian Desktop — Putih (#FFFFFF) dengan Border Lavender (#DED8FF) */
+html.light #global-prompt-search-input {
+  background-color: #FFFFFF !important;
+  border-color: #DED8FF !important;
+  color: #202044 !important;
+  box-shadow: inset 0 1px 2px rgba(32, 32, 68, 0.03) !important;
+}
+html.light #global-prompt-search-input::placeholder {
+  color: #8585A5 !important;
+}
+html.light #global-prompt-search-input:focus {
+  border-color: #6D3DF5 !important;
+  box-shadow: 0 0 0 2px rgba(109, 61, 245, 0.15) !important;
+}
+html.light header .relative.shrink-0 svg {
+  color: #8585A5 !important;
+}
+
+/* 11. 📱 Komponen Header Mobile di Light Mode */
+html.light #mobile-hamburger-btn {
+  background-color: #F0EDFF !important;
+  border-color: #DED8FF !important;
+  color: #202044 !important;
+}
+html.light #mobile-theme-toggle-btn {
+  background-color: #FFF4CF !important;
+  border-color: #FFE89E !important;
+  color: #D97706 !important;
+}
+html.light #mobile-theme-toggle-btn svg {
+  color: #D97706 !important;
+}
+html.light #mobile-search-toggle-btn:not(.bg-indigo-600) {
+  background-color: #F0EDFF !important;
+  border-color: #DED8FF !important;
+  color: #6D3DF5 !important;
+}
+html.light #mobile-expanded-search-input {
+  background-color: #FFFFFF !important;
+  border-color: #DED8FF !important;
+  color: #202044 !important;
+}
+html.light #mobile-quick-menu-main-btn:not(.bg-gradient-to-r) {
+  background-color: #F0EDFF !important;
+  border-color: #DED8FF !important;
+  color: #202044 !important;
+}
+html.light #mobile-quick-menu-dropdown-panel {
+  background-color: #FFFFFF !important;
+  border-color: #DED8FF !important;
+  box-shadow: 0 12px 32px rgba(32, 32, 68, 0.12) !important;
+}
+html.light #mobile-quick-menu-dropdown-panel button:hover {
+  background-color: #F7F5FF !important;
+}
+html.light #mobile-quick-menu-dropdown-panel button span.text-slate-100 {
+  color: #202044 !important;
+}
+html.light #mobile-quick-menu-dropdown-panel button span.text-slate-400 {
+  color: #64648A !important;
+}
+html.light #mobile-dropdown-ai-assistant-btn > div:first-child {
+  background: #EDE5FF !important;
+  border-color: #D8CAFF !important;
+  color: #6D3DF5 !important;
+}
+html.light #mobile-dropdown-backup-restore-btn > div:first-child {
+  background: #DFF0FF !important;
+  border-color: #BAE0FF !important;
+  color: #0284C7 !important;
+}
+html.light #mobile-dropdown-install-app-btn > div:first-child {
+  background: #DDF8EC !important;
+  border-color: #BAF0D3 !important;
+  color: #059669 !important;
+}
+html.light #mobile-dropdown-quick-lock-btn > div:first-child {
+  background: #FFE3EC !important;
+  border-color: #FFC2D4 !important;
+  color: #E11D48 !important;
+}
+html.light #mobile-dropdown-theme-toggle-btn > div:first-child {
+  background: #FFF4CF !important;
+  border-color: #FFE89E !important;
+  color: #D97706 !important;
+}
+html.light #mobile-dropdown-settings-btn > div:first-child {
+  background: #E5E9FF !important;
+  border-color: #CAD3FF !important;
+  color: #4F46E5 !important;
+}
+html.light #mobile-dropdown-add-folder-btn > div:first-child {
+  background: #FFE9D8 !important;
+  border-color: #FFD3B3 !important;
+  color: #EA580C !important;
+}
+html.light #mobile-quick-menu-dropdown-panel .grid.grid-cols-3 {
+  background-color: #F0EDFF !important;
+  border-color: #DED8FF !important;
+}
+html.light #mobile-quick-menu-dropdown-panel .grid.grid-cols-3 button.bg-indigo-600 {
+  background-color: #6D3DF5 !important;
+  color: #FFFFFF !important;
+}
+html.light #mobile-quick-menu-dropdown-panel .grid.grid-cols-3 button:not(.bg-indigo-600) {
+  color: #64648A !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   💜 TEMA TERANG: SIDEBAR LAVENDER MIST RESMI
+   Sidebar utama: #E8E5FF
+   Panel ringkasan koleksi: #F0EDFF
+   Border sidebar dan panel: #DED8FF
+   Teks utama: #202044
+   Teks sekunder: #64648A
+   Teks pendukung: #8585A5
+   Menu aktif: #6D3DF5 dengan teks #FFFFFF
+   Folder terkunci: indikator merah muda lembut kontras tinggi
+   ───────────────────────────────────────────────────────────── */
+html.light aside,
+html.light aside .sidebar-vault,
+html.light .sidebar-vault {
+  background-color: #E8E5FF !important;
+  border-right-color: #DED8FF !important;
+  color: #202044 !important;
+}
+
+/* Scrollbar khusus Sidebar Lavender Mist */
+html.light .sidebar-vault::-webkit-scrollbar-track {
+  background: #E8E5FF !important;
+}
+
+html.light .sidebar-vault::-webkit-scrollbar-thumb {
+  background: #CEC7FF !important;
+  border-radius: 9999px;
+}
+
+html.light .sidebar-vault::-webkit-scrollbar-thumb:hover {
+  background: #B8AEFF !important;
+}
+
+/* Header mobile close button row di sidebar */
+html.light .sidebar-vault .border-b {
+  border-bottom-color: #DED8FF !important;
+}
+
+html.light .sidebar-vault .border-b span {
+  color: #202044 !important;
+}
+
+/* Judul Bagian Sidebar (Menu Utama, Folder Saya, Kategori, AI) */
+html.light .sidebar-vault .text-slate-400.font-bold,
+html.light .sidebar-vault .text-slate-400.uppercase,
+html.light .sidebar-vault .uppercase {
+  color: #64648A !important;
+}
+
+/* Tombol Tambah Folder (+) */
+html.light .sidebar-vault #sidebar-add-folder-btn {
+  color: #64648A !important;
+}
+
+html.light .sidebar-vault #sidebar-add-folder-btn:hover {
+  background-color: #DED8FF !important;
+  color: #202044 !important;
+}
+
+/* Panel Ringkasan Koleksi (#F0EDFF) */
+html.light .sidebar-vault .sidebar-stats-banner {
+  background: #F0EDFF !important;
+  border-color: #DED8FF !important;
+  box-shadow: 0 1px 3px rgba(32, 32, 68, 0.04) !important;
+}
+
+html.light .sidebar-vault .sidebar-stats-banner span {
+  color: #64648A !important;
+}
+
+/* Tiga Kartu Angka Statistik di dalam Ringkasan Koleksi (#FFFFFF) */
+html.light .sidebar-vault .sidebar-stat-card {
+  background-color: #FFFFFF !important;
+  border-color: #DED8FF !important;
+  box-shadow: 0 1px 2px rgba(32, 32, 68, 0.03) !important;
+}
+
+html.light .sidebar-vault .sidebar-stat-card .text-slate-100 {
+  color: #202044 !important;
+}
+
+html.light .sidebar-vault .sidebar-stat-card .text-slate-400 {
+  color: #64648A !important;
+}
+
+/* Notice Filter Aktif di Sidebar */
+html.light .sidebar-vault .bg-amber-500\/10 {
+  background-color: #FEF3C7 !important;
+  border-color: #FCD34D !important;
+  color: #92400E !important;
+}
+
+html.light .sidebar-vault .bg-amber-500\/10 span,
+html.light .sidebar-vault .bg-amber-500\/10 button {
+  color: #92400E !important;
+}
+
+/* Menu Utama (Prompt Favorit, Semua Prompt Gambar, Semua Prompt Teks): Keadaan Tidak Aktif */
+html.light .sidebar-vault #filter-favorites-btn:not(.bg-indigo-600),
+html.light .sidebar-vault #filter-image-prompts-btn:not(.bg-indigo-600),
+html.light .sidebar-vault #filter-text-prompts-btn:not(.bg-indigo-600) {
+  color: #202044 !important;
+}
+
+html.light .sidebar-vault #filter-favorites-btn:not(.bg-indigo-600):hover,
+html.light .sidebar-vault #filter-image-prompts-btn:not(.bg-indigo-600):hover,
+html.light .sidebar-vault #filter-text-prompts-btn:not(.bg-indigo-600):hover {
+  background-color: #DED8FF !important;
+  color: #202044 !important;
+}
+
+/* Menu Utama Aktif: Latar Ungu (#6D3DF5) dengan Teks Putih */
+html.light .sidebar-vault #filter-favorites-btn.bg-indigo-600,
+html.light .sidebar-vault #filter-image-prompts-btn.bg-indigo-600,
+html.light .sidebar-vault #filter-text-prompts-btn.bg-indigo-600,
+html.light .sidebar-vault .bg-indigo-600 {
+  background-color: #6D3DF5 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 2px 8px rgba(109, 61, 245, 0.25) !important;
+}
+
+html.light .sidebar-vault #filter-favorites-btn.bg-indigo-600 *,
+html.light .sidebar-vault #filter-image-prompts-btn.bg-indigo-600 *,
+html.light .sidebar-vault #filter-text-prompts-btn.bg-indigo-600 *,
+html.light .sidebar-vault .bg-indigo-600 * {
+  color: #FFFFFF !important;
+}
+
+/* Badge Hitungan Prompt di Sidebar (Termasuk di sebelah Menu Utama & Folder) */
+html.light .sidebar-vault span.bg-slate-800,
+html.light .sidebar-vault .bg-slate-800:not(button) {
+  background-color: #F0EDFF !important;
+  border-color: #DED8FF !important;
+  color: #202044 !important;
+}
+
+/* Menu Item Folder Saya: Keadaan Tidak Aktif (Netral & Konsisten) */
+html.light .sidebar-vault .group:not(.is-active-folder) {
+  color: #202044 !important;
+}
+
+html.light .sidebar-vault .group:not(.is-active-folder):hover {
+  background-color: #DED8FF !important;
+}
+
+html.light .sidebar-vault .group:not(.is-active-folder) button {
+  color: #202044 !important;
+}
+
+/* Folder Aktif (is-active-folder): Latar Ungu dengan Teks Putih */
+html.light .sidebar-vault .is-active-folder {
+  background-color: #6D3DF5 !important;
+  border-color: #6D3DF5 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 2px 8px rgba(109, 61, 245, 0.25) !important;
+}
+
+html.light .sidebar-vault .is-active-folder * {
+  color: #FFFFFF !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   🔒 SOFT ROSE LOCK BADGE (LIGHT MODE)
+   - Latar baris: netral mengikuti sidebar (bukan merah)
+   - Border: netral (#DED8FF)
+   - Teks folder: warna teks utama normal (#202044)
+   - Ikon folder: warna ikon folder normal
+   - Latar badge: #FFE8EE
+   - Border badge: #FFCCD7
+   - Ikon gembok badge: #BE4966
+   ───────────────────────────────────────────────────────────── */
+html.light .soft-rose-lock-badge {
+  background-color: #FFE8EE !important;
+  border-color: #FFCCD7 !important;
+  color: #BE4966 !important;
+}
+
+html.light .soft-rose-lock-badge svg {
+  color: #BE4966 !important;
+}
+
+html.light .sidebar-vault .is-locked-folder:not(.is-active-folder) {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  color: #202044 !important;
+}
+
+html.light .sidebar-vault .is-locked-folder:not(.is-active-folder):hover {
+  background-color: #DED8FF !important;
+  color: #202044 !important;
+}
+
+html.light .sidebar-vault .is-locked-folder:not(.is-active-folder) button {
+  color: #202044 !important;
+}
+
+html.light .is-active-folder .soft-rose-lock-badge {
+  background-color: rgba(255, 255, 255, 0.25) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  color: #FFFFFF !important;
+}
+
+html.light .is-active-folder .soft-rose-lock-badge svg {
+  color: #FFFFFF !important;
+}
+
+/* Pills Target AI & Tags di Sidebar */
+html.light .sidebar-vault .bg-slate-800\/80 {
+  background-color: #F0EDFF !important;
+  border-color: #DED8FF !important;
+  color: #202044 !important;
+}
+
+html.light .sidebar-vault .bg-slate-800\/80:hover {
+  background-color: #DED8FF !important;
+}
+
+/* Card Pasang Aplikasi (PWA) di Bawah Sidebar */
+html.light .sidebar-vault #sidebar-install-app-btn {
+  background: #F0EDFF !important;
+  border-color: #DED8FF !important;
+  color: #202044 !important;
+  box-shadow: 0 1px 3px rgba(32, 32, 68, 0.04) !important;
+}
+
+html.light .sidebar-vault #sidebar-install-app-btn .text-slate-100 {
+  color: #202044 !important;
+}
+
+html.light .sidebar-vault #sidebar-install-app-btn .text-slate-400 {
+  color: #64648A !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Prompt Cards & Main Content Area (Latar #F7F5FF, Kartu #FFFFFF)
+   ───────────────────────────────────────────────────────────── */
+html.light [id^="prompt-card-"] {
+  background-color: #FFFFFF !important;
+  border-color: #DED8FF !important;
+  box-shadow: 0 1px 4px 0 rgba(32, 32, 68, 0.04);
+}
+
+html.light [id^="prompt-card-"]:hover {
+  border-color: #6D3DF5 !important;
+  box-shadow: 0 8px 24px 0 rgba(109, 61, 245, 0.09) !important;
+}
+
+/* Light Mode Card Shadows and Subtle Borders */
+html.light .shadow-lg,
+html[data-theme="light"] .shadow-lg {
+  box-shadow: 0 4px 16px rgba(32, 32, 68, 0.04);
+}
+
+html.light .shadow-xl,
+html[data-theme="light"] .shadow-xl {
+  box-shadow: 0 8px 24px rgba(32, 32, 68, 0.06);
+}
+
+html.light .shadow-2xl,
+html[data-theme="light"] .shadow-2xl {
+  box-shadow: 0 16px 36px rgba(32, 32, 68, 0.09);
+}
+
+/* Modal Backdrops in Light Mode: subtle blur overlay */
+html.light .fixed.inset-0.bg-slate-950\/80,
+html.light .fixed.inset-0.bg-slate-950\/85,
+html.light .fixed.inset-0.bg-slate-950\/90,
+html.light .fixed.inset-0.bg-slate-900\/80,
+html.light .fixed.inset-0.bg-slate-900\/90 {
+  background-color: rgba(32, 32, 68, 0.35) !important;
+  backdrop-filter: blur(4px);
+}
+
+/* Form inputs & selects in Light Mode */
+html.light input:not([type="checkbox"]):not([type="radio"]),
+html.light textarea,
+html.light select {
+  background-color: #FFFFFF !important;
+  border-color: #DED8FF !important;
+  color: #202044 !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #8585A5 !important;
+}
+
+html.light input:focus,
+html.light textarea:focus,
+html.light select:focus {
+  border-color: #6D3DF5 !important;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(109, 61, 245, 0.15) !important;
+}
+
+html.light select option {
+  background-color: #FFFFFF;
+  color: #202044;
+}
+
+/* Status colors AAA/AA contrast tuning in Light Mode */
+html.light .text-emerald-400 { color: #059669; }
+html.light .text-purple-400 { color: #7C3AED; }
+html.light .text-amber-400 { color: #D97706; }
+html.light .text-blue-400 { color: #2563EB; }
+html.light .text-pink-400 { color: #DB2777; }
+html.light .text-rose-400 { color: #E11D48; }
+
+/* Safeguard: avoid hover:text-white turning text invisible on light buttons/panels */
+html.light .hover\:text-white:hover:not(.bg-indigo-600):not(.bg-indigo-500):not(.bg-purple-600):not(.bg-emerald-600):not(.bg-rose-600):not(.bg-red-600):not(.bg-amber-600):not(button.bg-indigo-600 *):not(button.bg-purple-600 *):not(button.bg-emerald-600 *):not(button.bg-rose-600 *):not(button.bg-red-600 *):not(button.bg-amber-600 *) {
+  color: #202044;
+}
+
+/* Ensure prompt snippet preview on card has clear contrast in Lavender Mist (#F4F2FF) */
+html.light .bg-slate-950\/80 {
+  background-color: #F4F2FF !important;
+  border-color: #DED8FF !important;
+  color: #202044 !important;
+}
+
+/* Prompt Card Screenshot & Placeholder containers in Light Mode */
+html.light .bg-slate-950.flex.items-center.justify-center,
+html.light [id^="prompt-card-"] .bg-slate-950\/40 {
+  background-color: #F4F2FF !important;
+  border-bottom-color: #DED8FF !important;
+}
+
+html.light [id^="prompt-card-"] .border-t {
+  border-top-color: #DED8FF !important;
+  background-color: #FFFFFF !important;
+}
+
+/* Mode Pembuatan Prompt Segmented Control in Light Mode */
+html.light #prompt-form-mode-container {
+  background-color: #F0EDFF !important;
+  border-color: #DED8FF !important;
+}
+
+html.light #form-mode-text-only-btn.bg-indigo-600,
+html.light #form-mode-with-images-btn.bg-indigo-600 {
+  background-color: #6D3DF5 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 2px 6px rgba(109, 61, 245, 0.25) !important;
+}
+
+html.light #form-mode-text-only-btn:not(.bg-indigo-600),
+html.light #form-mode-with-images-btn:not(.bg-indigo-600) {
+  color: #64648A !important;
+}
+
+html.light #form-mode-text-only-btn:not(.bg-indigo-600):hover,
+html.light #form-mode-with-images-btn:not(.bg-indigo-600):hover {
+  background-color: #E5E0FF !important;
+  color: #202044 !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   📁 FOLDER BADGES ON PROMPT CARDS (LIGHT MODE CONTRAST REFINEMENT)
+   Memastikan nama folder & ikon kontras tinggi dan terbaca jelas (WCAG AA/AAA):
+   - Latar badge: pastel lembut serasi dengan tema Lavender Mist
+   - Teks nama folder: warna gelap kontras tinggi (#263247)
+   - Ikon folder: warna aksen khas folder yang tegas & pekat
+   - Border badge: aksen lembut yang sedikit lebih tegas dari latar
+   - Hover: latar sedikit lebih kaya tanpa mengurangi kontras teks
+   ───────────────────────────────────────────────────────────── */
+html.light .folder-badge,
+html[data-theme="light"] .folder-badge {
+  color: #263247 !important;
+  font-weight: 600 !important;
+}
+
+html.light .folder-badge span,
+html[data-theme="light"] .folder-badge span {
+  color: #263247 !important;
+  font-weight: 600 !important;
+}
+
+/* 1. Indigo (Pas Foto Formal, dll.) */
+html.light .folder-badge-indigo,
+html[data-theme="light"] .folder-badge-indigo {
+  background-color: #EEF2FF !important;
+  border-color: #C7D2FE !important;
+}
+html.light .folder-badge-indigo:hover,
+html[data-theme="light"] .folder-badge-indigo:hover {
+  background-color: #E0E7FF !important;
+  border-color: #A5B4FC !important;
+}
+html.light .folder-badge-indigo svg,
+html[data-theme="light"] .folder-badge-indigo svg {
+  color: #4F46E5 !important;
+}
+
+/* 2. Emerald */
+html.light .folder-badge-emerald,
+html[data-theme="light"] .folder-badge-emerald {
+  background-color: #ECFDF5 !important;
+  border-color: #A7F3D0 !important;
+}
+html.light .folder-badge-emerald:hover,
+html[data-theme="light"] .folder-badge-emerald:hover {
+  background-color: #D1FAE5 !important;
+  border-color: #6EE7B7 !important;
+}
+html.light .folder-badge-emerald svg,
+html[data-theme="light"] .folder-badge-emerald svg {
+  color: #059669 !important;
+}
+
+/* 3. Amber (Close Up, dll.) */
+html.light .folder-badge-amber,
+html[data-theme="light"] .folder-badge-amber {
+  background-color: #FFFBEB !important;
+  border-color: #FDE68A !important;
+}
+html.light .folder-badge-amber:hover,
+html[data-theme="light"] .folder-badge-amber:hover {
+  background-color: #FEF3C7 !important;
+  border-color: #FCD34D !important;
+}
+html.light .folder-badge-amber svg,
+html[data-theme="light"] .folder-badge-amber svg {
+  color: #D97706 !important;
+}
+
+/* 4. Rose */
+html.light .folder-badge-rose,
+html[data-theme="light"] .folder-badge-rose {
+  background-color: #FFF1F2 !important;
+  border-color: #FECDD3 !important;
+}
+html.light .folder-badge-rose:hover,
+html[data-theme="light"] .folder-badge-rose:hover {
+  background-color: #FFE4E6 !important;
+  border-color: #FDA4AF !important;
+}
+html.light .folder-badge-rose svg,
+html[data-theme="light"] .folder-badge-rose svg {
+  color: #E11D48 !important;
+}
+
+/* 5. Cyan */
+html.light .folder-badge-cyan,
+html[data-theme="light"] .folder-badge-cyan {
+  background-color: #ECFEFF !important;
+  border-color: #A5F3FC !important;
+}
+html.light .folder-badge-cyan:hover,
+html[data-theme="light"] .folder-badge-cyan:hover {
+  background-color: #CFFAFE !important;
+  border-color: #67E8F9 !important;
+}
+html.light .folder-badge-cyan svg,
+html[data-theme="light"] .folder-badge-cyan svg {
+  color: #0891B2 !important;
+}
+
+/* 6. Purple */
+html.light .folder-badge-purple,
+html[data-theme="light"] .folder-badge-purple {
+  background-color: #FAF5FF !important;
+  border-color: #E9D5FF !important;
+}
+html.light .folder-badge-purple:hover,
+html[data-theme="light"] .folder-badge-purple:hover {
+  background-color: #F3E8FF !important;
+  border-color: #D8B4FE !important;
+}
+html.light .folder-badge-purple svg,
+html[data-theme="light"] .folder-badge-purple svg {
+  color: #7C3AED !important;
+}
+
+/* 7. Blue */
+html.light .folder-badge-blue,
+html[data-theme="light"] .folder-badge-blue {
+  background-color: #EFF6FF !important;
+  border-color: #BFDBFE !important;
+}
+html.light .folder-badge-blue:hover,
+html[data-theme="light"] .folder-badge-blue:hover {
+  background-color: #DBEAFE !important;
+  border-color: #93C5FD !important;
+}
+html.light .folder-badge-blue svg,
+html[data-theme="light"] .folder-badge-blue svg {
+  color: #2563EB !important;
+}

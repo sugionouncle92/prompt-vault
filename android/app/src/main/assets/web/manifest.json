@@ -1,0 +1,66 @@
+{
+  "id": "/",
+  "name": "PromptVault — AI Prompt Manager & Security Vault",
+  "short_name": "PromptVault",
+  "description": "Simpan, kelola, organisir, dan cari prompt AI beserta screenshot referensi dengan enkripsi Access Key & sinkronisasi cloud realtime.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#020617",
+  "theme_color": "#4f46e5",
+  "lang": "id",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities", "developer"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Tambah Prompt Baru",
+      "short_name": "Prompt Baru",
+      "description": "Buat prompt AI baru dan simpan ke vault",
+      "url": "/?action=new-prompt",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "AI Assistant Optimizer",
+      "short_name": "AI Assistant",
+      "description": "Optimasi prompt menggunakan kecerdasan buatan Gemini",
+      "url": "/?action=ai-assistant",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
+}

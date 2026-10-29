@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // App settings and configuration
+    match /app/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Prompts collection
+    match /prompts/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Folders collection
+    match /folders/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Global document rule
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+

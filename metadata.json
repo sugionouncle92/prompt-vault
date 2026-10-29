@@ -1,0 +1,8 @@
+{
+  "name": "Remix PromptVault 3 (agenposbatuan@gmail.com)",
+  "description": "Simpan, kelola, organisai, dan cari prompt AI beserta screenshot referensi gambar, dilengkapi sistem keamanan enkripsi Access Key & Master PIN.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

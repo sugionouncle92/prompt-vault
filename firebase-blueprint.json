@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "appSettings": {
+      "title": "AppSettings",
+      "description": "Global application settings and user preferences",
+      "type": "object",
+      "properties": {
+        "theme": { "type": "string", "description": "Theme name (dark or light)" },
+        "activeTab": { "type": "string", "description": "Last active tab or view" },
+        "filters": { "type": "object", "description": "Filter criteria state" },
+        "viewMode": { "type": "string", "description": "Display layout (grid, list, compact)" },
+        "sortBy": { "type": "string", "description": "Sort order field" },
+        "sortDirection": { "type": "string", "description": "Sort direction (asc, desc)" },
+        "searchQuery": { "type": "string", "description": "Active search input text" },
+        "sidebarCollapsed": { "type": "boolean", "description": "Whether the sidebar is collapsed" },
+        "aiSettings": { "type": "object", "description": "AI Assistant parameters and preferences" },
+        "panelSizes": { "type": "object", "description": "UI panel sizes and sidebar collapsed states" },
+        "preferences": { "type": "object", "description": "User preferences" },
+        "gallerySettings": { "type": "object", "description": "Gallery layout settings" },
+        "lastPage": { "type": "string", "description": "Last active view page" },
+        "updatedAt": { "type": "string", "description": "Timestamp of last modification" }
+      }
+    },
+    "prompts": {
+      "title": "Prompt",
+      "description": "Prompts stored in the PromptVault",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Prompt title", "maxLength": 300 },
+        "promptText": { "type": "string", "description": "Full prompt text content" },
+        "targetAI": { "type": "string", "description": "Target AI platform" },
+        "category": { "type": "string", "description": "Prompt category" },
+        "folderId": { "type": "string", "description": "Associated folder ID or null" },
+        "description": { "type": "string", "description": "Short summary or description" },
+        "tags": { "type": "array", "description": "List of tags" },
+        "images": { "type": "array", "description": "Attached image URLs or compressed base64" },
+        "isFavorite": { "type": "boolean", "description": "Favorite flag" },
+        "createdAt": { "type": "string", "description": "Creation ISO date" },
+        "updatedAt": { "type": "string", "description": "Update ISO date" },
+        "variables": { "type": "array", "description": "Extracted variable placeholders" },
+        "versionHistory": { "type": "array", "description": "Prompt version history list" }
+      },
+      "required": ["title", "promptText", "targetAI", "category"]
+    },
+    "folders": {
+      "title": "Folder",
+      "description": "Folders for organizing prompts",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Folder display name", "maxLength": 100 },
+        "color": { "type": "string", "description": "Color theme identifier" },
+        "description": { "type": "string", "description": "Folder description", "maxLength": 500 },
+        "createdAt": { "type": "string", "description": "Creation ISO date" },
+        "isLocked": { "type": "boolean", "description": "Whether folder is protected by key" },
+        "keyHash": { "type": "string", "description": "PBKDF2 SHA-256 hash of folder key" },
+        "keySalt": { "type": "string", "description": "Salt used for PBKDF2 hash generation" },
+        "lockType": { "type": "string", "description": "Type of lock (e.g. key)" }
+      },
+      "required": ["name", "color"]
+    }
+  },
+  "firestore": {
+    "/app/settings/current/{configId}": {
+      "schema": "appSettings",
+      "description": "Global application settings document"
+    },
+    "/prompts/{promptId}": {
+      "schema": "prompts",
+      "description": "Prompts collection in PromptVault"
+    },
+    "/folders/{folderId}": {
+      "schema": "folders",
+      "description": "Folders collection for organizing prompts"
+    }
+  }
+}
