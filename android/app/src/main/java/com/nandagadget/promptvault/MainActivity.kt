@@ -215,7 +215,40 @@ class MainActivity : AppCompatActivity() {
                 request: WebResourceRequest?
             ): WebResourceResponse? {
                 val url = request?.url ?: return null
-                return assetLoader.shouldInterceptRequest(url)
+                val loadedResponse = assetLoader.shouldInterceptRequest(url)
+                if (loadedResponse != null) {
+                    return loadedResponse
+                }
+
+                // Fallback for root-relative paths like /icons/icon-192.png or /favicon.png
+                if (url.host == "appassets.androidplatform.net") {
+                    val rawPath = (url.path ?: "").trimStart('/')
+                    val cleanPath = when {
+                        rawPath.startsWith("assets/web/") -> rawPath.removePrefix("assets/web/")
+                        rawPath.startsWith("assets/") -> rawPath.removePrefix("assets/")
+                        rawPath.startsWith("web/") -> rawPath.removePrefix("web/")
+                        else -> rawPath
+                    }
+                    val assetCandidate = "web/$cleanPath"
+                    try {
+                        val stream = assets.open(assetCandidate)
+                        val mimeType = when {
+                            cleanPath.endsWith(".html") -> "text/html"
+                            cleanPath.endsWith(".css") -> "text/css"
+                            cleanPath.endsWith(".js") -> "application/javascript"
+                            cleanPath.endsWith(".png") -> "image/png"
+                            cleanPath.endsWith(".jpg") || cleanPath.endsWith(".jpeg") -> "image/jpeg"
+                            cleanPath.endsWith(".svg") -> "image/svg+xml"
+                            cleanPath.endsWith(".json") || cleanPath.endsWith(".webmanifest") -> "application/json"
+                            cleanPath.endsWith(".ico") -> "image/x-icon"
+                            else -> "application/octet-stream"
+                        }
+                        return WebResourceResponse(mimeType, "UTF-8", stream)
+                    } catch (e: Exception) {
+                        Log.w("PromptVault", "Asset fallback not found: $assetCandidate")
+                    }
+                }
+                return null
             }
 
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {

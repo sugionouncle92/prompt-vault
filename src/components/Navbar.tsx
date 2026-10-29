@@ -20,6 +20,7 @@ import {
   Moon,
 } from 'lucide-react';
 import { FilterState, ViewMode, AppTheme } from '../types';
+import appLogo from '../assets/logo-192.png';
 
 interface NavbarProps {
   filters: FilterState;
@@ -121,9 +122,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Logo & Brand Name */}
             <div className="flex items-center gap-2">
               <img
-                src="/icons/icon-192.png"
+                src={appLogo}
                 alt="PromptVault Logo"
                 className="w-9 h-9 rounded-xl object-contain shadow-md shadow-indigo-500/20 shrink-0"
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = './icons/icon-192.png';
+                }}
               />
               <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-100">
                 PromptVault
@@ -430,9 +435,13 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <div className="flex items-center gap-2.5">
               <img
-                src="/icons/icon-192.png"
+                src={appLogo}
                 alt="PromptVault Logo"
                 className="w-10 h-10 rounded-xl object-contain shadow-lg shadow-indigo-500/20 shrink-0"
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = './icons/icon-192.png';
+                }}
               />
               <div>
                 <div className="flex items-center gap-2">

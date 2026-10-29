@@ -22,6 +22,7 @@ import { FolderLockConfigModal, LockConfigMode } from './components/FolderLockCo
 import { DeleteFolderModal } from './components/DeleteFolderModal';
 import { AccessKeyGate } from './components/AccessKeyGate';
 import { PWAUpdateToast } from './components/PWAUpdateToast';
+import appLogo from './assets/logo-192.png';
 import {
   FilterState,
   FolderItem,
@@ -982,9 +983,13 @@ export default function App() {
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6 space-y-6 select-none">
         <div className="relative">
           <img
-            src="/icons/icon-192.png"
+            src={appLogo}
             alt="PromptVault Logo"
             className="w-16 h-16 rounded-2xl object-contain shadow-2xl shadow-indigo-500/40 animate-pulse"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = './icons/icon-192.png';
+            }}
           />
           <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 border-2 border-slate-950 flex items-center justify-center">
             <Sparkles className="w-3 h-3 text-white animate-spin" />

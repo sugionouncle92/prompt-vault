@@ -33,6 +33,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { AppSettings, saveSettingsToFirebase } from '../services/firebaseService';
+import appLogo from '../assets/logo-192.png';
 import { usePWA } from '../hooks/usePWA';
 import {
   hashMasterRecoveryPin,
@@ -1731,9 +1732,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <img
-                      src="/icons/icon-192.png"
+                      src={appLogo}
                       alt="PromptVault App Icon"
                       className="w-12 h-12 rounded-2xl object-contain shadow-lg shadow-indigo-600/30 shrink-0"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = './icons/icon-192.png';
+                      }}
                     />
                     <div>
                       <h4 className="text-base font-bold text-slate-100 flex items-center gap-2">
