@@ -40,24 +40,6 @@ async function startServer() {
     res.json({ status: "ok", appName: "PromptVault" });
   });
 
-  // Secure OTP Dispatch Endpoint (Logs and integrates email provider / SMTP if configured)
-  app.post("/api/security/send-otp", (req, res) => {
-    const { email, purpose, otp } = req.body;
-    if (!email || !otp) {
-      return res.status(400).json({ error: "Email and OTP required" });
-    }
-
-    console.log(`[PromptVault Security] Dispatching 6-digit OTP to: ${email}`);
-    console.log(`[PromptVault Security] Purpose: ${purpose} | Code: [SECURE 6-DIGIT OTP]`);
-
-    // Responds success without leaking credentials or plain text in public response
-    return res.json({
-      success: true,
-      message: `OTP successfully sent to ${email}`,
-      validMinutes: 5,
-    });
-  });
-
   // AI Prompt Optimizer
   app.post("/api/gemini/optimize", async (req, res) => {
     try {

@@ -13,11 +13,7 @@ import {
   Sparkles,
   Image as ImageIcon,
   FileText,
-  Lock,
-  Unlock,
-  KeyRound,
   MoreVertical,
-  ShieldCheck,
   Download,
 } from 'lucide-react';
 import {
@@ -34,13 +30,9 @@ interface SidebarProps {
   folders: FolderItem[];
   filters: FilterState;
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
-  unlockedFolderIds: Set<string>;
   onOpenNewFolderModal: () => void;
   onEditFolder: (folder: FolderItem) => void;
   onDeleteFolder: (folderId: string) => void;
-  onOpenUnlockModal: (folder: FolderItem) => void;
-  onOpenLockConfigModal: (folder: FolderItem, mode?: 'set' | 'change' | 'remove') => void;
-  onLockFolderNow: (folderId: string) => void;
   isMobileSidebarOpen: boolean;
   setIsMobileSidebarOpen: (open: boolean) => void;
 }
@@ -50,13 +42,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   folders,
   filters,
   setFilters,
-  unlockedFolderIds,
   onOpenNewFolderModal,
   onEditFolder,
   onDeleteFolder,
-  onOpenUnlockModal,
-  onOpenLockConfigModal,
-  onLockFolderNow,
   isMobileSidebarOpen,
   setIsMobileSidebarOpen,
 }) => {
@@ -69,17 +57,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const favoritePrompts = prompts.filter((p) => p.isFavorite).length;
   const totalImages = prompts.reduce((acc, p) => acc + (p.images?.length || 0), 0);
 
-  // Helper to check if a prompt belongs to a locked folder that is currently locked
-  const isPromptAccessible = (p: PromptItem) => {
-    if (!p.folderId) return true;
-    const folder = folders.find((f) => f.id === p.folderId);
-    if (!folder || !folder.isLocked) return true;
-    return unlockedFolderIds.has(folder.id);
-  };
+  // All prompts are freely accessible (no lock restriction)
+  const accessiblePrompts = prompts;
 
-  const accessiblePrompts = prompts.filter(isPromptAccessible);
-
-  // Exact counts for the 3 main menus based on accessible prompts
+  // Exact counts for the 3 main menus based on all prompts
   const favoritePromptsCount = accessiblePrompts.filter((p) => p.isFavorite).length;
   const imagePromptsCount = accessiblePrompts.filter(
     (p) => p.images && p.images.length > 0
@@ -343,24 +324,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             sortedFolders.map((folder) => {
               const colorConfig =
                 FOLDER_COLORS.find((c) => c.value === folder.color) || FOLDER_COLORS[0];
-              const isLocked = Boolean(folder.isLocked);
-              const isUnlockedInSession = unlockedFolderIds.has(folder.id);
               const isSelected = filters.folderId === folder.id;
-
-              // Filter prompt count: hide count or count only visible prompts
               const countInFolder = prompts.filter((p) => p.folderId === folder.id).length;
 
               const handleFolderClick = () => {
-                if (isLocked && !isUnlockedInSession) {
-                  onOpenUnlockModal(folder);
-                } else {
-                  setFilters((prev) => ({
-                    ...prev,
-                    folderId: folder.id,
-                    onlyFavorites: false,
-                    contentType: 'all',
-                  }));
-                }
+                setFilters((prev) => ({
+                  ...prev,
+                  folderId: folder.id,
+                  onlyFavorites: false,
+                  contentType: 'all',
+                }));
               };
 
               return (
@@ -369,8 +342,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className={`group relative flex items-center justify-between px-2.5 py-1.5 rounded-xl transition-all duration-150 ${
                     isSelected
                       ? `is-active-folder ${colorConfig.activeBg || 'bg-indigo-600'} border border-indigo-500/50 text-white shadow-md ring-1 ring-white/10 font-medium`
-                      : isLocked && !isUnlockedInSession
-                      ? 'is-locked-folder hover:bg-slate-800/70 text-slate-300 border border-transparent'
                       : 'hover:bg-slate-800/70 text-slate-300 border border-transparent'
                   }`}
                 >
@@ -379,42 +350,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className={`flex-1 flex items-center gap-2 truncate text-left transition-colors ${
                       isSelected ? 'text-white font-semibold' : 'text-slate-300 hover:text-slate-100'
                     }`}
-                    title={
-                      isLocked
-                        ? isUnlockedInSession
-                          ? 'Folder Terproteksi (Terbuka di Sesi Ini)'
-                          : 'Folder Terkunci (Klik untuk Masukkan Key)'
-                        : folder.name
-                    }
+                    title={folder.name}
                   >
-                    {isLocked && isUnlockedInSession ? (
-                      <Unlock className="w-4 h-4 text-emerald-400 shrink-0" />
-                    ) : (
-                      <Folder className={`w-4 h-4 ${isSelected ? 'text-white' : colorConfig.text} shrink-0`} />
-                    )}
+                    <Folder className={`w-4 h-4 ${isSelected ? 'text-white' : colorConfig.text} shrink-0`} />
                     <span className="truncate">{folder.name}</span>
                   </button>
 
                   <div className="flex items-center gap-1.5">
-                    {/* Soft Rose Lock Badge (single compact lock icon) or Prompt Count Badge */}
-                    {isLocked && !isUnlockedInSession ? (
-                      <span
-                        className="soft-rose-lock-badge flex items-center justify-center w-6 h-5 rounded-md border text-[10px] font-medium shrink-0 transition-colors"
-                        title="Folder Terkunci"
-                      >
-                        <Lock className="w-3 h-3 shrink-0" />
-                      </span>
-                    ) : (
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-md border transition-colors ${
-                          isSelected
-                            ? 'bg-slate-900/90 text-slate-100 border-slate-700/80 font-semibold shadow-xs'
-                            : 'bg-slate-800 text-slate-400 border-slate-700'
-                        }`}
-                      >
-                        {countInFolder}
-                      </span>
-                    )}
+                    {/* Prompt Count Badge */}
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-md border transition-colors ${
+                        isSelected
+                          ? 'bg-slate-900/90 text-slate-100 border-slate-700/80 font-semibold shadow-xs'
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}
+                    >
+                      {countInFolder}
+                    </span>
 
                     {/* Three-dots Menu Trigger */}
                     <div className="relative">
@@ -444,7 +396,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           />
                           <div
                             onClick={(e) => e.stopPropagation()}
-                            className="absolute right-0 top-full mt-1 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl py-1.5 z-40 text-xs text-slate-200"
+                            className="absolute right-0 top-full mt-1 w-44 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl py-1.5 z-40 text-xs text-slate-200"
                           >
                             {/* Rename / Edit */}
                             <button
@@ -457,71 +409,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               <Edit2 className="w-3.5 h-3.5 text-indigo-400" />
                               <span>Rename / Edit</span>
                             </button>
-
-                            {/* Lock Controls */}
-                            {!isLocked ? (
-                              <button
-                                onClick={() => {
-                                  setActiveFolderMenuId(null);
-                                  onOpenLockConfigModal(folder, 'set');
-                                }}
-                                className="w-full text-left px-3 py-1.5 hover:bg-slate-700 flex items-center gap-2 text-amber-300"
-                              >
-                                <Lock className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Kunci Folder</span>
-                              </button>
-                            ) : (
-                              <>
-                                {/* Unlock / Relock if in session */}
-                                {isUnlockedInSession ? (
-                                  <button
-                                    onClick={() => {
-                                      setActiveFolderMenuId(null);
-                                      onLockFolderNow(folder.id);
-                                    }}
-                                    className="w-full text-left px-3 py-1.5 hover:bg-slate-700 flex items-center gap-2 text-amber-300"
-                                  >
-                                    <Lock className="w-3.5 h-3.5 text-amber-400" />
-                                    <span>Kunci Sekarang</span>
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => {
-                                      setActiveFolderMenuId(null);
-                                      onOpenUnlockModal(folder);
-                                    }}
-                                    className="w-full text-left px-3 py-1.5 hover:bg-slate-700 flex items-center gap-2 text-emerald-300"
-                                  >
-                                    <Unlock className="w-3.5 h-3.5 text-emerald-400" />
-                                    <span>Buka Folder</span>
-                                  </button>
-                                )}
-
-                                {/* Change Key */}
-                                <button
-                                  onClick={() => {
-                                    setActiveFolderMenuId(null);
-                                    onOpenLockConfigModal(folder, 'change');
-                                  }}
-                                  className="w-full text-left px-3 py-1.5 hover:bg-slate-700 flex items-center gap-2 text-slate-200"
-                                >
-                                  <KeyRound className="w-3.5 h-3.5 text-indigo-400" />
-                                  <span>Ubah Key</span>
-                                </button>
-
-                                {/* Remove Lock */}
-                                <button
-                                  onClick={() => {
-                                    setActiveFolderMenuId(null);
-                                    onOpenLockConfigModal(folder, 'remove');
-                                  }}
-                                  className="w-full text-left px-3 py-1.5 hover:bg-slate-700 flex items-center gap-2 text-rose-300"
-                                >
-                                  <Unlock className="w-3.5 h-3.5 text-rose-400" />
-                                  <span>Hapus Kunci</span>
-                                </button>
-                              </>
-                            )}
 
                             <div className="my-1 border-t border-slate-700" />
 

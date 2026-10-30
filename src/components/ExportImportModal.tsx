@@ -45,7 +45,6 @@ interface ExportImportModalProps {
   prompts: PromptItem[];
   folders: FolderItem[];
   appSettings: AppSettings;
-  unlockedFolderIds: Set<string>;
   onClose: () => void;
   onExecuteRestore: (
     stagedFolders: FolderItem[],
@@ -61,7 +60,6 @@ export const ExportImportModal: React.FC<ExportImportModalProps> = ({
   prompts,
   folders,
   appSettings,
-  unlockedFolderIds,
   onClose,
   onExecuteRestore,
   onRollbackSnapshot,

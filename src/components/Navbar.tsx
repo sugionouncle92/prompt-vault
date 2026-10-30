@@ -13,7 +13,6 @@ import {
   Bookmark,
   SlidersHorizontal,
   Settings,
-  Lock,
   ChevronDown,
   ChevronUp,
   Sun,
@@ -30,8 +29,6 @@ interface NavbarProps {
   onOpenAIAssistantModal: () => void;
   onOpenExportImportModal: () => void;
   onOpenSettingsModal: () => void;
-  onQuickLockVault?: () => void;
-  isVaultKeyActive?: boolean;
   isMobileSidebarOpen: boolean;
   setIsMobileSidebarOpen: (open: boolean) => void;
   totalPromptsCount: number;
@@ -47,8 +44,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAIAssistantModal,
   onOpenExportImportModal,
   onOpenSettingsModal,
-  onQuickLockVault,
-  isVaultKeyActive = false,
   isMobileSidebarOpen,
   setIsMobileSidebarOpen,
   totalPromptsCount,
@@ -271,22 +266,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               </button>
 
-              {/* 🔒 Kunci Cepat */}
-              {onQuickLockVault && (
-                <button
-                  onClick={() => handleAction(onQuickLockVault)}
-                  className="w-full min-h-[46px] px-3.5 py-2.5 rounded-xl text-left text-xs font-medium text-slate-200 hover:text-white hover:bg-rose-950/40 active:bg-rose-900/50 transition-all flex items-center gap-3 border border-rose-500/20 group"
-                  id="mobile-dropdown-quick-lock-btn"
-                >
-                  <div className="w-9 h-9 rounded-xl bg-rose-600/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
-                    <Lock className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="font-semibold block text-rose-300 text-sm">🔒 Kunci Cepat</span>
-                    <span className="text-[11px] text-rose-400/80 truncate block">Kunci sesi vault seketika</span>
-                  </div>
-                </button>
-              )}
+
 
               {/* 🌓 Toggle Tema (Gelap / Terang) */}
               {onToggleTheme && (
@@ -508,17 +488,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onOpenExportImportModal}
             />
 
-            {/* 🔒 Kunci Cepat (rose/red accent) */}
-            {onQuickLockVault && (
-              <DesktopQuickActionButton
-                id="desktop-qa-quick-lock"
-                title="Kunci Sesi Vault Seketika"
-                variant={isVaultKeyActive ? 'rose-active' : 'rose-lock'}
-                icon={<Lock className={`w-5 h-5 ${isVaultKeyActive ? 'text-rose-300' : 'text-rose-400'}`} />}
-                label="Kunci Cepat"
-                onClick={onQuickLockVault}
-              />
-            )}
+
 
             {/* ⚙️ Settings (slate/indigo accent) */}
             <DesktopQuickActionButton

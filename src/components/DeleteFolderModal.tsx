@@ -1,36 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   X,
   Trash2,
   FolderInput,
   AlertTriangle,
-  Lock,
-  Eye,
-  EyeOff,
   Folder,
   ArrowLeft,
   Loader2,
   ShieldAlert,
-  KeyRound,
   Check,
 } from 'lucide-react';
 import { FolderItem, FOLDER_COLORS, PromptItem } from '../types';
-import { AppSettings } from '../services/firebaseService';
-import {
-  verifyFolderKey,
-  verifyMasterRecoveryPin,
-  isMasterRecoveryPinConfigured,
-  getFolderLockoutRemainingSeconds,
-  recordFailedAttempt,
-  resetFailedAttempts,
-} from '../utils/security';
 
 interface DeleteFolderModalProps {
   folder: FolderItem;
   folders: FolderItem[];
   prompts: PromptItem[];
-  unlockedFolderIds: Set<string>;
-  securitySettings?: AppSettings['security'];
   onClose: () => void;
   onConfirmRelocateAndDelete: (
     folderId: string,
@@ -41,14 +26,12 @@ interface DeleteFolderModalProps {
   onConfirmDeleteEmpty: (folderId: string) => Promise<boolean>;
 }
 
-type ModalStep = 'auth' | 'initial' | 'relocate' | 'confirm-delete-all';
+type ModalStep = 'initial' | 'relocate' | 'confirm-delete-all';
 
 export const DeleteFolderModal: React.FC<DeleteFolderModalProps> = ({
   folder,
   folders,
   prompts,
-  unlockedFolderIds,
-  securitySettings,
   onClose,
   onConfirmRelocateAndDelete,
   onConfirmDeleteAll,
@@ -58,21 +41,7 @@ export const DeleteFolderModal: React.FC<DeleteFolderModalProps> = ({
   const folderPrompts = prompts.filter((p) => p.folderId === folder.id);
   const promptCount = folderPrompts.length;
 
-  // Check if authentication step is strictly required
-  const isLocked = Boolean(folder.isLocked);
-  const isAlreadyUnlockedInSession = unlockedFolderIds.has(folder.id);
-  // If folder is locked, require verification (unless already verified in current session)
-  const initialStep: ModalStep = isLocked && !isAlreadyUnlockedInSession ? 'auth' : 'initial';
-
-  const [currentStep, setCurrentStep] = useState<ModalStep>(initialStep);
-
-  // Authentication State
-  const [authMode, setAuthMode] = useState<'standard' | 'recovery'>('standard');
-  const [pinInput, setPinInput] = useState('');
-  const [showPin, setShowPin] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [lockoutRemaining, setLockoutRemaining] = useState<number>(0);
+  const [currentStep, setCurrentStep] = useState<ModalStep>('initial');
 
   // Relocation State
   const [selectedTargetFolderId, setSelectedTargetFolderId] = useState<string | null>(null);
@@ -81,104 +50,11 @@ export const DeleteFolderModal: React.FC<DeleteFolderModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
 
-  const authInputRef = useRef<HTMLInputElement>(null);
-  const hasMasterPin = isMasterRecoveryPinConfigured(securitySettings);
-
   const colorConfig =
     FOLDER_COLORS.find((c) => c.value === folder.color) || FOLDER_COLORS[0];
 
   // Available destination folders (excluding the folder being deleted)
   const availableTargetFolders = folders.filter((f) => f.id !== folder.id);
-
-  // Check lockout on mount and tick
-  useEffect(() => {
-    if (currentStep !== 'auth') return;
-    const checkLockout = () => {
-      const remaining = getFolderLockoutRemainingSeconds(folder.id);
-      setLockoutRemaining(remaining);
-      if (remaining > 0 && authMode === 'standard') {
-        setAuthError(
-          `Terlalu banyak percobaan salah. Silakan tunggu ${remaining} detik sebelum mencoba kembali.`
-        );
-      } else if (authError?.startsWith('Terlalu banyak') && remaining === 0) {
-        setAuthError(null);
-      }
-    };
-
-    checkLockout();
-    const interval = setInterval(checkLockout, 1000);
-    return () => clearInterval(interval);
-  }, [folder.id, currentStep, authMode, authError]);
-
-  useEffect(() => {
-    if (currentStep === 'auth' && lockoutRemaining === 0) {
-      setTimeout(() => authInputRef.current?.focus(), 100);
-    }
-  }, [currentStep, authMode, lockoutRemaining]);
-
-  // Handle Authentication Submission
-  const handleAuthSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!pinInput.trim() || isVerifying || lockoutRemaining > 0) return;
-
-    setIsVerifying(true);
-    setAuthError(null);
-
-    try {
-      if (authMode === 'standard') {
-        if (!folder.keyHash || !folder.keySalt) {
-          setAuthError('Konfigurasi kunci folder rusak atau tidak ditemukan.');
-          setIsVerifying(false);
-          return;
-        }
-
-        const isValid = await verifyFolderKey(pinInput.trim(), folder.keyHash, folder.keySalt);
-        if (isValid) {
-          resetFailedAttempts(folder.id);
-          setIsVerifying(false);
-          setPinInput('');
-          setCurrentStep('initial');
-        } else {
-          const lockoutStatus = recordFailedAttempt(folder.id);
-          setIsVerifying(false);
-          if (lockoutStatus.isLockedOut) {
-            setLockoutRemaining(lockoutStatus.lockoutSeconds);
-            setAuthError(
-              `Terlalu banyak percobaan salah (5x). Silakan tunggu ${lockoutStatus.lockoutSeconds} detik.`
-            );
-          } else {
-            setAuthError('Key folder salah. Silakan coba kembali atau gunakan Master Recovery PIN.');
-          }
-        }
-      } else {
-        // Recovery via Master Recovery PIN
-        if (!securitySettings?.masterPinHash || !securitySettings?.masterPinSalt) {
-          setAuthError('Master Recovery PIN belum dikonfigurasi di Pengaturan.');
-          setIsVerifying(false);
-          return;
-        }
-
-        const isValid = await verifyMasterRecoveryPin(
-          pinInput.trim(),
-          securitySettings.masterPinHash,
-          securitySettings.masterPinSalt
-        );
-
-        setIsVerifying(false);
-        if (isValid) {
-          resetFailedAttempts(folder.id);
-          setPinInput('');
-          setCurrentStep('initial');
-        } else {
-          setAuthError('Master Recovery PIN salah. Silakan periksa kembali.');
-        }
-      }
-    } catch (err) {
-      console.error('Error during delete authentication:', err);
-      setIsVerifying(false);
-      setAuthError('Gagal memverifikasi kunci. Silakan coba lagi.');
-    }
-  };
 
   // Execution Handlers
   const handleExecuteDeleteEmpty = async () => {
@@ -240,14 +116,10 @@ export const DeleteFolderModal: React.FC<DeleteFolderModalProps> = ({
               className={`p-2 rounded-xl border ${
                 currentStep === 'confirm-delete-all'
                   ? 'bg-rose-500/20 border-rose-500/40 text-rose-400'
-                  : currentStep === 'auth'
-                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
                   : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
               }`}
             >
-              {currentStep === 'auth' ? (
-                <Lock className="w-5 h-5" />
-              ) : currentStep === 'confirm-delete-all' ? (
+              {currentStep === 'confirm-delete-all' ? (
                 <AlertTriangle className="w-5 h-5" />
               ) : (
                 <Trash2 className="w-5 h-5" />
@@ -255,18 +127,14 @@ export const DeleteFolderModal: React.FC<DeleteFolderModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-100" id="delete-folder-modal-title">
-                {currentStep === 'auth'
-                  ? 'Verifikasi Keamanan Folder'
-                  : currentStep === 'relocate'
+                {currentStep === 'relocate'
                   ? 'Pindahkan Prompt'
                   : currentStep === 'confirm-delete-all'
                   ? 'Konfirmasi Hapus Folder & Isi'
                   : 'Hapus Folder?'}
               </h2>
               <p className="text-xs text-slate-400">
-                {currentStep === 'auth'
-                  ? 'Folder berstatus locked'
-                  : `Kelola folder “${folder.name}”`}
+                Kelola folder &ldquo;{folder.name}&rdquo;
               </p>
             </div>
           </div>
@@ -295,124 +163,7 @@ export const DeleteFolderModal: React.FC<DeleteFolderModalProps> = ({
           </div>
         )}
 
-        {/* STEP 1: AUTHENTICATION (FOR LOCKED FOLDERS) */}
-        {currentStep === 'auth' && (
-          <form onSubmit={handleAuthSubmit} className="space-y-4" id="folder-auth-form">
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 text-xs text-amber-200 space-y-1">
-              <p className="font-semibold text-amber-300">
-                Folder &ldquo;{folder.name}&rdquo; diproteksi kunci keamanan.
-              </p>
-              <p className="text-amber-300/80 text-[11px] leading-relaxed">
-                {authMode === 'standard'
-                  ? 'Masukkan PIN / Key folder untuk memverifikasi kepemilikan sebelum penghapusan.'
-                  : 'Masukkan Master Recovery PIN untuk memverifikasi hak akses administratif.'}
-              </p>
-            </div>
-
-            {/* Auth Mode Switch */}
-            {hasMasterPin && (
-              <div className="flex items-center p-1 bg-slate-950/80 rounded-xl border border-slate-800 text-xs">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('standard');
-                    setAuthError(null);
-                    setPinInput('');
-                  }}
-                  className={`flex-1 py-1.5 px-2 rounded-lg font-medium transition-colors ${
-                    authMode === 'standard'
-                      ? 'bg-slate-800 text-white shadow-xs'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                  id="tab-standard-folder-pin"
-                >
-                  PIN Folder
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('recovery');
-                    setAuthError(null);
-                    setPinInput('');
-                  }}
-                  className={`flex-1 py-1.5 px-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 ${
-                    authMode === 'recovery'
-                      ? 'bg-amber-500/20 border border-amber-500/30 text-amber-300 shadow-xs'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                  id="tab-master-recovery-pin"
-                >
-                  <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                  Master Recovery PIN
-                </button>
-              </div>
-            )}
-
-            {/* PIN Input */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300 block">
-                {authMode === 'standard' ? 'Masukkan Key / PIN Folder' : 'Masukkan Master Recovery PIN'}
-              </label>
-              <div className="relative">
-                <input
-                  ref={authInputRef}
-                  type={showPin ? 'text' : 'password'}
-                  value={pinInput}
-                  onChange={(e) => {
-                    setPinInput(e.target.value);
-                    if (authError) setAuthError(null);
-                  }}
-                  disabled={lockoutRemaining > 0 || isVerifying}
-                  placeholder={
-                    authMode === 'standard'
-                      ? 'Masukkan key folder...'
-                      : 'Masukkan 6 digit master PIN...'
-                  }
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500 pr-10"
-                  id="folder-auth-input"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPin(!showPin)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-                  id="toggle-auth-pin-visibility"
-                >
-                  {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {authError && (
-              <div className="text-xs text-rose-400 bg-rose-950/40 border border-rose-500/30 rounded-xl p-2.5">
-                {authError}
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isVerifying}
-                className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors"
-                id="cancel-folder-auth-btn"
-              >
-                Batal
-              </button>
-              <button
-                type="submit"
-                disabled={!pinInput.trim() || isVerifying || lockoutRemaining > 0}
-                className="px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-lg shadow-amber-600/30 transition-all flex items-center gap-1.5"
-                id="verify-folder-auth-btn"
-              >
-                {isVerifying && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Verifikasi & Lanjutkan</span>
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* STEP 2: INITIAL CONFIRMATION VIEW */}
+        {/* INITIAL CONFIRMATION VIEW */}
         {currentStep === 'initial' && (
           <div className="space-y-5" id="delete-folder-initial-step">
             {/* Folder Highlight Box */}
