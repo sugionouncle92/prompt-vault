@@ -40,8 +40,17 @@ export function sanitizeFirestorePayload<T extends Record<string, any>>(obj: T):
   return clean;
 }
 
+export type RecoveryEmailStatus = 'unregistered' | 'pending' | 'verified';
+
+export interface RecoveryEmailConfig {
+  email: string;
+  status: RecoveryEmailStatus;
+  verifiedAt?: string;
+  updatedAt?: string;
+}
+
 export interface AppSecuritySettings {
-  isGlobalAppLockEnabled?: boolean; // Global toggle: true = active security/gate, false = bypass/no lock
+  isGlobalAppLockEnabled?: boolean; // Deprecated in v2.1 (kept for backwards compatibility)
   isVaultAccessKeyEnabled?: boolean;
   vaultAccessKeyHash?: string;
   vaultAccessKeySalt?: string;
@@ -49,6 +58,7 @@ export interface AppSecuritySettings {
   isMasterPinSet?: boolean;
   masterPinHash?: string;
   masterPinSalt?: string;
+  recoveryEmail?: RecoveryEmailConfig;
   autoLockDuration?: 'immediate' | 'refresh' | '1min' | '5min' | '15min' | '30min' | 'unload';
   updatedAt?: string;
 }
@@ -151,7 +161,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     cardStyle: 'bordered',
   },
   security: {
-    isGlobalAppLockEnabled: true,
+    isGlobalAppLockEnabled: false, // v2.1: No global app lock
     isVaultAccessKeyEnabled: false,
     vaultAccessKeyHash: '',
     vaultAccessKeySalt: '',
@@ -159,6 +169,10 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     isMasterPinSet: false,
     masterPinHash: '',
     masterPinSalt: '',
+    recoveryEmail: {
+      email: '',
+      status: 'unregistered',
+    },
     autoLockDuration: '5min',
   },
   lastPage: 'vault',

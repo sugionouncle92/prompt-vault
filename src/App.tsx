@@ -130,14 +130,9 @@ export default function App() {
   const [lockConfigMode, setLockConfigMode] = useState<LockConfigMode>('set');
   const [deletingFolder, setDeletingFolder] = useState<FolderItem | null>(null);
 
-  // App-Wide Vault Access Key State
-  const [isVaultUnlocked, setIsVaultUnlocked] = useState<boolean>(() => getSessionVaultUnlocked());
-
-  const isVaultKeyRequired = useMemo(() => {
-    return isVaultAccessKeyConfigured(appSettings.security);
-  }, [appSettings.security]);
-
-  const isAppLocked = isVaultKeyRequired && !isVaultUnlocked;
+  // App-Wide Vault Access Key State (Deprecated in v2.1: Always unlocked, no global lock)
+  const isVaultKeyRequired = false;
+  const isAppLocked = false;
 
   // Toast Notifications
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -254,18 +249,10 @@ export default function App() {
     await saveSettingsToFirebase(newSettings);
   };
 
-  // Vault Security Handlers
-  const handleUnlockVaultSuccess = () => {
-    setSessionVaultUnlocked(true);
-    setIsVaultUnlocked(true);
-    showToast('🔐 Akses PromptVault Berhasil Dibuka!');
-  };
-
+  // Quick Lock Handlers: Lock all unlocked folders in session
   const handleQuickLockVault = () => {
-    setSessionVaultUnlocked(false);
-    setIsVaultUnlocked(false);
     handleLockAllFolders();
-    showToast('🔒 Sesi PromptVault telah dikunci.');
+    showToast('🔒 Semua folder terproteksi telah dikunci.');
   };
 
   const handleUpdateSecuritySettings = async (newSec: Partial<AppSecuritySettings>) => {
@@ -361,16 +348,26 @@ export default function App() {
       next.delete(folderId);
       return next;
     });
-    showToast(`Kunci folder "${targetFolder.name}" berhasil direset via Master PIN!`);
+    showToast(`Kunci folder "${targetFolder.name}" berhasil direset!`);
   };
 
-  // Auto-Lock Inactivity Timer
-  useEffect(() => {
-    // If Global App Lock is OFF, completely disable auto-lock inactivity timer
-    if (appSettings.security?.isGlobalAppLockEnabled === false) {
-      return;
-    }
+  const handleUpdateFolderKey = async (folderId: string, keyHash: string, keySalt: string) => {
+    const targetFolder = folders.find((f) => f.id === folderId);
+    if (!targetFolder) return;
+    const updated: FolderItem = {
+      ...targetFolder,
+      isLocked: true,
+      keyHash,
+      keySalt,
+      lockType: 'key',
+    };
+    await saveFolderToFirebase(updated);
+    setUnlockedFolderIds((prev) => new Set([...prev, folderId]));
+    showToast(`Access Key untuk "${targetFolder.name}" berhasil diperbarui!`);
+  };
 
+  // Auto-Lock Inactivity Timer for Unlocked Folders
+  useEffect(() => {
     const autoLockDuration = appSettings.preferences?.autoLockDuration || 'refresh';
     if (autoLockDuration === 'refresh' || autoLockDuration === 'unload') {
       return;
@@ -385,18 +382,9 @@ export default function App() {
     const resetTimer = () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
-        let lockedSomething = false;
-        if (isVaultKeyRequired && isVaultUnlocked) {
-          setSessionVaultUnlocked(false);
-          setIsVaultUnlocked(false);
-          lockedSomething = true;
-        }
         if (unlockedFolderIds.size > 0) {
           handleLockAllFolders();
-          lockedSomething = true;
-        }
-        if (lockedSomething) {
-          showToast('Sesi tidak aktif — PromptVault terkunci otomatis.');
+          showToast('Sesi tidak aktif — Folder terproteksi dikunci otomatis.');
         }
       }, timeoutMs);
     };
@@ -409,7 +397,7 @@ export default function App() {
       clearTimeout(timer);
       events.forEach((evt) => window.removeEventListener(evt, resetTimer));
     };
-  }, [appSettings.preferences?.autoLockDuration, appSettings.security?.isGlobalAppLockEnabled, unlockedFolderIds.size, isVaultKeyRequired, isVaultUnlocked]);
+  }, [appSettings.preferences?.autoLockDuration, unlockedFolderIds.size]);
 
   // 1. Initial connection & restore from Firebase Cloud Firestore
   useEffect(() => {
@@ -1025,17 +1013,8 @@ export default function App() {
     );
   }
 
-  // App-Wide Vault Access Key Gate Protection
-  if (isAppLocked) {
-    return (
-      <AccessKeyGate
-        securitySettings={appSettings.security}
-        onUnlockSuccess={handleUnlockVaultSuccess}
-        onUpdateSecuritySettings={handleUpdateSecuritySettings}
-        appName="PromptVault"
-      />
-    );
-  }
+  // App-Wide Vault Access Key Gate Protection is removed in v2.1
+  // The app always opens directly without any app-level lock screen.
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
@@ -1062,8 +1041,8 @@ export default function App() {
         onOpenAIAssistantModal={() => setIsAIAssistantModalOpen(true)}
         onOpenExportImportModal={() => setIsExportImportModalOpen(true)}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
-        onQuickLockVault={isVaultKeyRequired ? handleQuickLockVault : undefined}
-        isVaultKeyActive={isVaultKeyRequired}
+        onQuickLockVault={handleQuickLockVault}
+        isVaultKeyActive={folders.some((f) => f.isLocked)}
         isMobileSidebarOpen={isMobileSidebarOpen}
         setIsMobileSidebarOpen={setIsMobileSidebarOpen}
         totalPromptsCount={prompts.length}
@@ -1467,7 +1446,9 @@ export default function App() {
       {isSettingsModalOpen && (
         <SettingsModal
           settings={appSettings}
+          folders={folders}
           onUpdateSettings={handleUpdateSettings}
+          onSaveFolder={handleSaveFolder}
           onClose={() => setIsSettingsModalOpen(false)}
           isFirebaseConnected={isFirebaseConnected}
           onRetryFirebase={() => {
@@ -1486,6 +1467,8 @@ export default function App() {
           onClose={() => setUnlockingFolder(null)}
           onUnlockSuccess={handleUnlockFolderSuccess}
           onResetLock={handleResetFolderLock}
+          onSaveLockConfig={handleSaveLockConfig}
+          onUpdateFolderKey={handleUpdateFolderKey}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
         />
       )}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Sliders,
@@ -31,8 +31,13 @@ import {
   Share2,
   PlusSquare,
   Zap,
+  Mail,
+  Send,
+  FolderLock,
+  Folder as FolderIcon,
 } from 'lucide-react';
 import { AppSettings, saveSettingsToFirebase } from '../services/firebaseService';
+import { FolderItem, FOLDER_COLORS } from '../types';
 import appLogo from '../assets/logo-192.png';
 import { usePWA } from '../hooks/usePWA';
 import {
@@ -42,12 +47,21 @@ import {
   hashVaultAccessKey,
   verifyVaultAccessKey,
   isVaultAccessKeyConfigured,
+  hashFolderKey,
+  verifyFolderKey,
   setSessionVaultUnlocked,
 } from '../utils/security';
+import {
+  requestEmailOtp,
+  verifyEmailOtp,
+  maskEmail,
+} from '../utils/emailOtp';
 
 interface SettingsModalProps {
   settings: AppSettings;
+  folders?: FolderItem[];
   onUpdateSettings: (newSettings: AppSettings) => void;
+  onSaveFolder?: (folderData: Partial<FolderItem>) => Promise<void> | void;
   onClose: () => void;
   isFirebaseConnected: boolean;
   onRetryFirebase: () => void;
@@ -59,7 +73,9 @@ interface SettingsModalProps {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
+  folders = [],
   onUpdateSettings,
+  onSaveFolder,
   onClose,
   isFirebaseConnected,
   onRetryFirebase,
@@ -140,6 +156,124 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onUpdateSettings(updatedSettings);
     triggerAutoSave(updatedSettings);
     setShowDisableAppLockConfirm(false);
+  };
+
+  // Email Pemulihan States
+  const recoveryEmailConfig = settings.security?.recoveryEmail || {
+    email: '',
+    status: 'unregistered' as const,
+  };
+  const [isEditingEmail, setIsEditingEmail] = useState(false);
+  const [emailInput, setEmailInput] = useState(recoveryEmailConfig.email || '');
+  const [isSendingEmailOtp, setIsSendingEmailOtp] = useState(false);
+  const [isVerifyingEmailOtp, setIsVerifyingEmailOtp] = useState(false);
+  const [emailOtpInput, setEmailOtpInput] = useState('');
+  const [isEmailOtpSent, setIsEmailOtpSent] = useState(false);
+  const [emailOtpCooldown, setEmailOtpCooldown] = useState(0);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
+  const [simulatedOtpNotice, setSimulatedOtpNotice] = useState<string | null>(null);
+
+  // Countdown timer for email OTP resend
+  useEffect(() => {
+    if (emailOtpCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setEmailOtpCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [emailOtpCooldown]);
+
+  const handleStartRegisterOrChangeEmail = () => {
+    setIsEditingEmail(true);
+    setEmailInput(recoveryEmailConfig.email || '');
+    setEmailOtpInput('');
+    setIsEmailOtpSent(false);
+    setEmailError(null);
+    setEmailSuccess(null);
+    setSimulatedOtpNotice(null);
+  };
+
+  const handleSendVerificationEmail = async () => {
+    const trimmedEmail = emailInput.trim().toLowerCase();
+    if (!trimmedEmail || !trimmedEmail.includes('@') || !trimmedEmail.includes('.')) {
+      setEmailError('Format email tidak valid. Gunakan format nama@domain.com');
+      return;
+    }
+
+    setIsSendingEmailOtp(true);
+    setEmailError(null);
+    setEmailSuccess(null);
+    setSimulatedOtpNotice(null);
+
+    const res = await requestEmailOtp(trimmedEmail, 'verify_email');
+    setIsSendingEmailOtp(false);
+
+    if (res.success) {
+      setIsEmailOtpSent(true);
+      setEmailOtpCooldown(res.resendAfterSeconds || 60);
+      setEmailSuccess(`Kode OTP 6 digit telah dikirim ke ${maskEmail(trimmedEmail)}.`);
+      if (res.simulatedOtp) {
+        setSimulatedOtpNotice(`Kode OTP Simulasi: ${res.simulatedOtp}`);
+      }
+
+      // Update email status to 'pending'
+      const updatedSecurity = {
+        ...settings.security,
+        recoveryEmail: {
+          email: trimmedEmail,
+          status: 'pending' as const,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      const updatedSettings = { ...settings, security: updatedSecurity };
+      onUpdateSettings(updatedSettings);
+      triggerAutoSave(updatedSettings);
+    } else {
+      setEmailError(res.error || 'Gagal mengirim kode verifikasi.');
+    }
+  };
+
+  const handleVerifyEmailOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanOtp = emailOtpInput.trim();
+    const cleanEmail = emailInput.trim().toLowerCase();
+
+    if (!cleanOtp || cleanOtp.length !== 6) {
+      setEmailError('Masukkan 6 digit kode OTP.');
+      return;
+    }
+
+    setIsVerifyingEmailOtp(true);
+    setEmailError(null);
+    setEmailSuccess(null);
+
+    const res = await verifyEmailOtp(cleanEmail, cleanOtp, 'verify_email');
+    setIsVerifyingEmailOtp(false);
+
+    if (res.success) {
+      const nowISO = new Date().toISOString();
+      const updatedSecurity = {
+        ...settings.security,
+        recoveryEmail: {
+          email: cleanEmail,
+          status: 'verified' as const,
+          verifiedAt: nowISO,
+          updatedAt: nowISO,
+        },
+      };
+      const updatedSettings = { ...settings, security: updatedSecurity };
+      onUpdateSettings(updatedSettings);
+      triggerAutoSave(updatedSettings);
+
+      setEmailSuccess('Selamat! Email pemulihan berhasil diverifikasi.');
+      setSimulatedOtpNotice(null);
+      setTimeout(() => {
+        setIsEditingEmail(false);
+        setIsEmailOtpSent(false);
+      }, 1500);
+    } else {
+      setEmailError(res.error || 'Kode OTP tidak valid.');
+    }
   };
 
   // Master Recovery PIN Editor States
@@ -1080,101 +1214,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {activeTab === 'security' && (
             <div className="space-y-6 animate-fade-in" id="settings-security-tab-content">
               
-              {/* SECTION 0: GLOBAL APP LOCK TOGGLE (FITUR BARU v2.1) */}
-              <div
-                className={`p-5 rounded-2xl border transition-all shadow-lg ${
-                  isGlobalAppLockOn
-                    ? 'bg-gradient-to-r from-emerald-950/40 via-indigo-950/30 to-slate-950/80 border-emerald-500/40 shadow-emerald-950/20'
-                    : 'bg-slate-950/70 border-slate-800 shadow-slate-950/40'
-                }`}
-                id="section-global-app-lock-toggle"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-start sm:items-center gap-3.5">
-                    <div
-                      className={`w-11 h-11 rounded-2xl border flex items-center justify-center shrink-0 transition-colors ${
-                        isGlobalAppLockOn
-                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
-                          : 'bg-slate-800 border-slate-700 text-slate-400'
-                      }`}
-                    >
-                      {isGlobalAppLockOn ? (
-                        <ShieldCheck className="w-6 h-6" />
-                      ) : (
-                        <ShieldAlert className="w-6 h-6" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2.5">
-                        <h4 className="text-sm font-bold text-slate-100">
-                          Status Kunci Aplikasi
-                        </h4>
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border tracking-wide uppercase font-mono ${
-                            isGlobalAppLockOn
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                              : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
-                          }`}
-                          id="global-app-lock-status-badge"
-                        >
-                          {isGlobalAppLockOn ? 'AKTIF' : 'NONAKTIF'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                        Aktifkan atau nonaktifkan seluruh mekanisme penguncian aplikasi sesuai kebutuhan.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Modern Toggle Switch */}
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={isGlobalAppLockOn}
-                      onClick={handleToggleGlobalAppLock}
-                      className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${
-                        isGlobalAppLockOn
-                          ? 'bg-emerald-600 border-emerald-500'
-                          : 'bg-slate-800 border-slate-700'
-                      }`}
-                      id="global-app-lock-toggle-switch"
-                    >
-                      <span className="sr-only">Toggle Status Kunci Aplikasi</span>
-                      <span
-                        aria-hidden="true"
-                        className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                          isGlobalAppLockOn ? 'translate-x-7' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Banner Keterangan Dinamis */}
-                {!isGlobalAppLockOn ? (
-                  <div className="mt-4 p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-300 space-y-1 animate-fade-in">
-                    <div className="font-semibold flex items-center gap-1.5 text-rose-200">
-                      <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                      <span>Perlindungan Kunci Aplikasi Sedang Dinonaktifkan</span>
-                    </div>
-                    <p className="text-[11px] text-slate-300 leading-relaxed pl-5">
-                      Aplikasi dapat dibuka dan digunakan langsung tanpa Access Key Gate. Auto-lock dan Kunci Cepat dinonaktifkan. Data Access Key dan Recovery PIN Anda <strong>tetap tersimpan aman</strong> dan akan langsung aktif kembali saat toggle ini diaktifkan lagi.
-                    </p>
-                  </div>
-                ) : (
-                  hasConfiguredAccessKey && (
-                    <div className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-300 flex items-center gap-2">
-                      <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>
-                        Sistem keamanan aktif penuh. Access Key Gate, proteksi sesi, dan Auto-lock berjalan normal.
-                      </span>
-                    </div>
-                  )
-                )}
-              </div>
-
-              {/* SECTION 1: ACCESS KEY GATE (KUNCI AKSES UTAMA VAULT) */}
+              {/* BAGIAN A: PENGATURAN KUNCI FOLDER (ACCESS KEY UTAMA) */}
               <div className="p-5 bg-gradient-to-b from-indigo-950/40 to-slate-950/80 border border-indigo-500/30 rounded-2xl space-y-4 shadow-lg shadow-indigo-950/20">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-500/20 pb-4">
                   <div className="flex items-center gap-3">
@@ -1183,10 +1223,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                        <span>Access Key Gate (Kunci Akses Vault)</span>
+                        <span>Pengaturan Kunci Folder (Access Key)</span>
                       </h4>
                       <p className="text-xs text-slate-400">
-                        Perlindungan akses aplikasi saat dibuka/dimuat ulang dengan enkripsi hashing PBKDF2 SHA-256 (bukan plaintext).
+                        Kunci akses utama untuk membuka folder-folder yang Anda proteksi (Hashing PBKDF2 SHA-256).
                       </p>
                     </div>
                   </div>
@@ -1202,12 +1242,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       {isVaultKeyActive ? (
                         <>
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Aktif (Hashing Kriptografi PBKDF2 SHA-256)</span>
+                          <span>Access Key Aktif</span>
                         </>
                       ) : (
                         <>
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Tidak Aktif</span>
+                          <span>Belum Diatur</span>
                         </>
                       )}
                     </span>
@@ -1229,7 +1269,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               type="button"
                               onClick={() => handleStartAccessKeyEdit('remove')}
                               className="px-2.5 py-1.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-semibold transition-all"
-                              title="Nonaktifkan Kunci Akses"
+                              title="Hapus Kunci Akses"
                               id="btn-remove-access-key"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1273,8 +1313,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <span className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
                         <KeyRound className="w-3.5 h-3.5" />
                         {accessKeyMode === 'set' && 'Konfigurasi Kunci Akses Baru'}
-                        {accessKeyMode === 'change' && 'Ganti Kunci Akses Vault'}
-                        {accessKeyMode === 'remove' && 'Nonaktifkan Kunci Akses Vault'}
+                        {accessKeyMode === 'change' && 'Ganti Kunci Akses Folder'}
+                        {accessKeyMode === 'remove' && 'Hapus Kunci Akses'}
                       </span>
                       <div className="flex items-center gap-2">
                         <button
@@ -1373,7 +1413,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     {accessKeyMode === 'remove' && (
                       <p className="text-[11px] text-amber-300/90 leading-relaxed bg-amber-950/30 p-2.5 rounded-xl border border-amber-500/30">
-                        Peringatan: Setelah dinonaktifkan, aplikasi dapat dibuka langsung tanpa meminta kunci akses pada saat dibuka atau dimuat ulang.
+                        Peringatan: Menghapus Access Key akan menonaktifkan proteksi pada folder-folder yang menggunakan kunci ini.
                       </p>
                     )}
 
@@ -1416,7 +1456,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <span>
                               {accessKeyMode === 'set' && 'Simpan & Aktifkan Kunci Akses'}
                               {accessKeyMode === 'change' && 'Perbarui Kunci Akses'}
-                              {accessKeyMode === 'remove' && 'Konfirmasi Nonaktifkan'}
+                              {accessKeyMode === 'remove' && 'Konfirmasi Hapus'}
                             </span>
                           </>
                         )}
@@ -1426,7 +1466,207 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
               </div>
 
-              {/* SECTION 2: MASTER RECOVERY PIN */}
+              {/* BAGIAN B: EMAIL PEMULIHAN (EMAIL OTP RECOVERY) */}
+              <div className="p-5 bg-gradient-to-b from-blue-950/40 to-slate-950/80 border border-blue-500/30 rounded-2xl space-y-4 shadow-lg shadow-blue-950/20" id="section-recovery-email">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-500/20 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                      <Mail className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                        <span>Email Pemulihan (Email OTP)</span>
+                      </h4>
+                      <p className="text-xs text-slate-400">
+                        Metode pemulihan mandiri jika Anda lupa Access Key folder melalui kode OTP 6 digit.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${
+                        recoveryEmailConfig.status === 'verified'
+                          ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                          : recoveryEmailConfig.status === 'pending'
+                          ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}
+                      id="recovery-email-status-badge"
+                    >
+                      {recoveryEmailConfig.status === 'verified' && (
+                        <>
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>TERVERIFIKASI</span>
+                        </>
+                      )}
+                      {recoveryEmailConfig.status === 'pending' && (
+                        <>
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                          <span>MENUNGGU VERIFIKASI</span>
+                        </>
+                      )}
+                      {recoveryEmailConfig.status === 'unregistered' && (
+                        <>
+                          <AlertTriangle className="w-3.5 h-3.5 text-slate-400" />
+                          <span>BELUM TERDAFTAR</span>
+                        </>
+                      )}
+                    </span>
+
+                    {!isEditingEmail && (
+                      <button
+                        type="button"
+                        onClick={handleStartRegisterOrChangeEmail}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5"
+                        id="btn-register-change-email"
+                      >
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>
+                          {recoveryEmailConfig.status === 'verified'
+                            ? 'Ganti Email'
+                            : recoveryEmailConfig.status === 'pending'
+                            ? 'Verifikasi Email'
+                            : 'Daftarkan Email'}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Email Info Display */}
+                {recoveryEmailConfig.email && !isEditingEmail && (
+                  <div className="p-3 bg-blue-950/30 border border-blue-500/20 rounded-xl text-xs text-blue-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-blue-400" />
+                      <span className="font-semibold text-slate-200 font-mono">
+                        {maskEmail(recoveryEmailConfig.email)}
+                      </span>
+                    </div>
+                    {recoveryEmailConfig.status === 'verified' && recoveryEmailConfig.verifiedAt && (
+                      <span className="text-[11px] text-emerald-400">
+                        Terverifikasi: {new Date(recoveryEmailConfig.verifiedAt).toLocaleDateString('id-ID')}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Form Pendaftaran / Verifikasi Email */}
+                {isEditingEmail && (
+                  <div className="p-4 bg-slate-950/95 border border-blue-500/40 rounded-2xl space-y-3.5 animate-fade-in">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <span className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>Pendaftaran & Verifikasi Email Pemulihan</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingEmail(false)}
+                        className="text-slate-400 hover:text-white text-xs px-2 py-1"
+                      >
+                        Batal
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-semibold text-slate-300 block">
+                        Alamat Email Pribadi Pengguna:
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="email"
+                          value={emailInput}
+                          onChange={(e) => setEmailInput(e.target.value)}
+                          placeholder="nama@email.com"
+                          disabled={isEmailOtpSent && isSendingEmailOtp}
+                          className="flex-1 bg-slate-900 border border-slate-700 text-slate-100 text-xs rounded-xl px-3 py-2.5 outline-none focus:border-blue-500 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSendVerificationEmail}
+                          disabled={isSendingEmailOtp || emailOtpCooldown > 0 || !emailInput.trim()}
+                          className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                            isSendingEmailOtp || emailOtpCooldown > 0 || !emailInput.trim()
+                              ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                              : 'bg-blue-600 hover:bg-blue-500 text-white shadow'
+                          }`}
+                          id="btn-send-email-otp"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>
+                            {isSendingEmailOtp
+                              ? 'Mengirim...'
+                              : emailOtpCooldown > 0
+                              ? `Tunggu (${emailOtpCooldown}s)`
+                              : isEmailOtpSent
+                              ? 'Kirim Ulang OTP'
+                              : 'Kirim Kode Verifikasi'}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Input OTP 6-Digit setelah dikirim */}
+                    {isEmailOtpSent && (
+                      <form onSubmit={handleVerifyEmailOtpSubmit} className="space-y-3 pt-2 border-t border-slate-800/80">
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-semibold text-slate-300 flex items-center justify-between">
+                            <span>Masukkan 6 Digit Kode OTP:</span>
+                            <span className="text-[10px] text-amber-400">Berlaku 5 menit (Maks 5 percobaan)</span>
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              maxLength={6}
+                              value={emailOtpInput}
+                              onChange={(e) => setEmailOtpInput(e.target.value.replace(/\D/g, ''))}
+                              placeholder="123456"
+                              className="w-36 bg-slate-900 border border-blue-500/60 text-center tracking-widest text-slate-100 text-base font-bold rounded-xl px-3 py-2 outline-none font-mono"
+                              autoFocus
+                            />
+                            <button
+                              type="submit"
+                              disabled={isVerifyingEmailOtp || emailOtpInput.length !== 6}
+                              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                isVerifyingEmailOtp || emailOtpInput.length !== 6
+                                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 active:scale-95'
+                              }`}
+                              id="btn-submit-verify-email-otp"
+                            >
+                              <Check className="w-4 h-4" />
+                              <span>{isVerifyingEmailOtp ? 'Memverifikasi...' : 'Verifikasi Email'}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {simulatedOtpNotice && (
+                          <div className="p-2 bg-indigo-950/40 border border-indigo-500/30 rounded-xl text-[11px] text-indigo-300 font-mono flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>{simulatedOtpNotice}</span>
+                          </div>
+                        )}
+                      </form>
+                    )}
+
+                    {emailError && (
+                      <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                        <span>{emailError}</span>
+                      </div>
+                    )}
+
+                    {emailSuccess && (
+                      <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                        <span>{emailSuccess}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* BAGIAN C: MASTER RECOVERY PIN */}
               <div className="p-5 bg-gradient-to-b from-amber-950/30 to-slate-950/80 border border-amber-500/30 rounded-2xl space-y-4 shadow-lg shadow-amber-950/20">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 pb-4">
                   <div className="flex items-center gap-3">
@@ -1438,7 +1678,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span>Master Recovery PIN (PIN Pemulihan Darurat)</span>
                       </h4>
                       <p className="text-xs text-slate-400">
-                        PIN darurat untuk memulihkan dan mereset Access Key atau membuka folder jika Anda lupa kunci.
+                        PIN darurat untuk memulihkan dan mereset Access Key folder jika Anda lupa kunci.
                       </p>
                     </div>
                   </div>
@@ -1454,7 +1694,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       {isMasterPinActive ? (
                         <>
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Aktif (Tersimpan di Cloud)</span>
+                          <span>PIN Aktif</span>
                         </>
                       ) : (
                         <>
@@ -1494,7 +1734,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             id="btn-set-master-pin"
                           >
                             <Key className="w-3.5 h-3.5" />
-                            <span>Atur Master PIN Baru</span>
+                            <span>Atur Recovery PIN Baru</span>
                           </button>
                         )}
                       </>
@@ -1597,7 +1837,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     {masterPinMode === 'remove' && (
                       <p className="text-[11px] text-amber-300/90 leading-relaxed bg-amber-950/30 p-2.5 rounded-xl border border-amber-500/30">
-                        Peringatan: Setelah dihapus, pemulihan darurat tidak tersedia jika Anda lupa Kunci Akses utama.
+                        Peringatan: Setelah dihapus, pemulihan darurat tidak tersedia jika Anda lupa Kunci Akses folder.
                       </p>
                     )}
 
@@ -1650,108 +1890,103 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
               </div>
 
-              {/* SECTION 3: KUNCI CEPAT & MANAJEMEN SESI */}
-              <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-4">
-                <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
-                  <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                    <Lock className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-100">Kunci Cepat & Manajemen Sesi</h4>
-                    <p className="text-xs text-slate-400">
-                      Kunci aplikasi secara instan atau konfigurasi durasi auto-lock saat tidak aktif.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Kunci Vault Sekarang */}
-                  <div className="p-4 bg-slate-900/90 border border-slate-800 rounded-xl space-y-3 flex flex-col justify-between">
+              {/* BAGIAN D: FOLDER TERPROTEKSI & KONTROL ON/OFF */}
+              <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-4" id="section-protected-folders">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                      <FolderLock className="w-5 h-5" />
+                    </div>
                     <div>
-                      <span className="text-xs font-bold text-slate-200 block">Kunci Layar PromptVault Sekarang</span>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        {isGlobalAppLockOn
-                          ? 'Langsung mengakhiri sesi aktif dan menampilkan Access Key Gate.'
-                          : 'Dinonaktifkan karena Status Kunci Aplikasi sedang NONAKTIF.'}
+                      <h4 className="text-sm font-bold text-slate-100">Folder Terproteksi</h4>
+                      <p className="text-xs text-slate-400">
+                        Kelola status perlindungan masing-masing folder dengan sakelar ON/OFF.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      disabled={!isGlobalAppLockOn}
-                      onClick={() => {
-                        onClose();
-                        if (onLockAppVaultNow) {
-                          onLockAppVaultNow();
-                        } else {
-                          setSessionVaultUnlocked(false);
-                          window.location.reload();
-                        }
-                      }}
-                      className={`w-full py-2.5 font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 ${
-                        isGlobalAppLockOn
-                          ? 'bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white'
-                          : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-60'
-                      }`}
-                      id="btn-quick-lock-vault-settings"
-                    >
-                      <Lock className="w-3.5 h-3.5" />
-                      <span>Kunci Layar Sekarang (Lock Vault)</span>
-                    </button>
                   </div>
-
-                  {/* Kunci Semua Folder */}
-                  <div className="p-4 bg-slate-900/90 border border-slate-800 rounded-xl space-y-3 flex flex-col justify-between">
-                    <div>
-                      <span className="text-xs font-bold text-slate-200 block">Kunci Semua Folder Terproteksi</span>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        {lockedFoldersCount} folder terproteksi ({unlockedFoldersCount} terbuka di sesi ini).
-                      </p>
-                    </div>
-                    {onLockAllFolders && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onLockAllFolders();
-                          setLockAllNotice(true);
-                          setTimeout(() => setLockAllNotice(false), 2500);
-                        }}
-                        className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
-                        id="btn-quick-lock-folders-settings"
-                      >
-                        <Lock className="w-3.5 h-3.5" />
-                        <span>Kunci Semua Folder Sesi Ini</span>
-                      </button>
-                    )}
-                  </div>
+                  <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
+                    {folders.filter((f) => f.isLocked).length} dari {folders.length} Folder Dilindungi
+                  </span>
                 </div>
 
-                {lockAllNotice && (
-                  <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-fade-in">
-                    <Check className="w-4 h-4 shrink-0 text-emerald-400" />
-                    <span>Semua folder terproteksi telah berhasil dikunci kembali pada sesi ini!</span>
+                {folders.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-3 text-center">Belum ada folder yang dibuat.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {folders.map((f) => {
+                      const colorObj = FOLDER_COLORS.find((c) => c.value === f.color) || FOLDER_COLORS[0];
+                      return (
+                        <div
+                          key={f.id}
+                          className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-7 h-7 rounded-lg ${colorObj.bg} flex items-center justify-center text-white shrink-0`}>
+                              {f.isLocked ? <Lock className="w-3.5 h-3.5" /> : <FolderIcon className="w-3.5 h-3.5" />}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-xs font-bold text-slate-200 block truncate">{f.name}</span>
+                              <span className="text-[10px] text-slate-400">
+                                {f.isLocked ? 'Status: Dilindungi Kunci' : 'Status: Tidak Terkunci (Publik)'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono ${
+                                f.isLocked
+                                  ? 'bg-rose-500/10 text-rose-300 border border-rose-500/20'
+                                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+                              }`}
+                            >
+                              {f.isLocked ? 'TERKUNCI' : 'TERBUKA'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!onSaveFolder) return;
+                                if (f.isLocked) {
+                                  // Turn OFF protection
+                                  await onSaveFolder({
+                                    id: f.id,
+                                    name: f.name,
+                                    color: f.color,
+                                    isLocked: false,
+                                  });
+                                } else {
+                                  // Turn ON protection using existing or general vault key hash
+                                  const keyHash = f.keyHash || settings.security?.vaultAccessKeyHash;
+                                  const keySalt = f.keySalt || settings.security?.vaultAccessKeySalt;
+                                  if (!keyHash || !keySalt) {
+                                    alert('Silakan atur Kunci Akses Folder terlebih dahulu di Bagian A di atas.');
+                                    return;
+                                  }
+                                  await onSaveFolder({
+                                    id: f.id,
+                                    name: f.name,
+                                    color: f.color,
+                                    isLocked: true,
+                                    keyHash,
+                                    keySalt,
+                                    lockType: 'key',
+                                  });
+                                }
+                              }}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                                f.isLocked
+                                  ? 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-500/30'
+                                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow'
+                              }`}
+                            >
+                              {f.isLocked ? 'Nonaktifkan Kunci' : 'Aktifkan Kunci'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
-
-                {/* Auto Lock Duration Selector */}
-                <div className="space-y-2 pt-2 border-t border-slate-800">
-                  <label className="text-xs font-semibold text-slate-300 block">
-                    Durasi Kunci Otomatis (Auto-Lock Session):
-                  </label>
-                  <select
-                    value={settings.preferences.autoLockDuration || '5min'}
-                    onChange={(e) =>
-                      updateNestedSetting('preferences', 'autoLockDuration', e.target.value)
-                    }
-                    className="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-xl p-3 outline-none focus:border-indigo-500"
-                  >
-                    <option value="refresh">Saat Halaman Direfresh / Dimuat Ulang</option>
-                    <option value="1min">Setelah 1 Menit Tidak Aktif</option>
-                    <option value="5min">Setelah 5 Menit Tidak Aktif (Direkomendasikan)</option>
-                    <option value="15min">Setelah 15 Menit Tidak Aktif</option>
-                    <option value="30min">Setelah 30 Menit Tidak Aktif</option>
-                    <option value="unload">Saat Tab / Browser Ditutup</option>
-                  </select>
-                </div>
               </div>
 
               {/* SECTION 4: CRYPTOGRAPHIC SPECS */}
@@ -1761,7 +1996,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span>Arsitektur Kriptografi SHA-256 (Zero Plaintext Policy)</span>
                 </div>
                 <p className="text-[11px] leading-relaxed text-slate-400">
-                  Semua kunci akses dan recovery PIN diproses menggunakan algoritma <strong>PBKDF2 SHA-256</strong> dengan 100.000 iterasi dan 16-byte kriptografi acak (Salt). Password plaintext tidak pernah disimpan di Cloud Firestore maupun local storage.
+                  Semua kredensial, recovery PIN, dan OTP diproses menggunakan hashing bergaram <strong>PBKDF2 SHA-256</strong>. Tidak ada plaintext yang tersimpan di cloud atau local storage.
                 </p>
               </div>
 

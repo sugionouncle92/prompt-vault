@@ -13,6 +13,11 @@ import {
   Key,
   Settings as SettingsIcon,
   HelpCircle,
+  Mail,
+  ArrowLeft,
+  Sparkles,
+  RefreshCw,
+  Check,
 } from 'lucide-react';
 import { FolderItem, FOLDER_COLORS } from '../types';
 import { AppSettings } from '../services/firebaseService';
@@ -23,7 +28,13 @@ import {
   getFolderLockoutRemainingSeconds,
   recordFailedAttempt,
   resetFailedAttempts,
+  hashFolderKey,
 } from '../utils/security';
+import {
+  requestEmailOtp,
+  verifyEmailOtp,
+  maskEmail,
+} from '../utils/emailOtp';
 
 interface UnlockFolderModalProps {
   folder: FolderItem;
@@ -31,8 +42,12 @@ interface UnlockFolderModalProps {
   onClose: () => void;
   onUnlockSuccess: (folderId: string) => void;
   onResetLock?: (folderId: string) => Promise<void> | void;
+  onSaveLockConfig?: (updatedFields: Partial<FolderItem>) => Promise<void> | void;
+  onUpdateFolderKey?: (folderId: string, keyHash: string, keySalt: string) => Promise<void> | void;
   onOpenSettings?: () => void;
 }
+
+type ModalMode = 'standard' | 'recovery_choice' | 'email_otp' | 'master_pin' | 'new_key';
 
 export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
   folder,
@@ -40,36 +55,61 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
   onClose,
   onUnlockSuccess,
   onResetLock,
+  onSaveLockConfig,
+  onUpdateFolderKey,
   onOpenSettings,
 }) => {
-  const [unlockMode, setUnlockMode] = useState<'standard' | 'recovery'>('standard');
-  const [keyInput, setKeyInput] = useState('');
-  const [masterPinInput, setMasterPinInput] = useState('');
-  const [showKey, setShowKey] = useState(false);
-  const [showMasterPin, setShowMasterPin] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [mode, setMode] = useState<ModalMode>('standard');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Standard unlock state
+  const [keyInput, setKeyInput] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [lockoutRemaining, setLockoutRemaining] = useState<number>(0);
-  
-  // Recovery action choice: 'unlock' (just unlock session) or 'reset' (remove lock completely)
-  const [recoveryAction, setRecoveryAction] = useState<'unlock' | 'reset'>('unlock');
+
+  // Email OTP Recovery state
+  const recoveryEmailConfig = securitySettings?.recoveryEmail;
+  const isEmailVerified =
+    recoveryEmailConfig?.status === 'verified' && Boolean(recoveryEmailConfig?.email?.trim());
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [otpCooldown, setOtpCooldown] = useState<number>(0);
+  const [otpInput, setOtpInput] = useState('');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpSentOnce, setOtpSentOnce] = useState(false);
+  const [simulatedOtpNotice, setSimulatedOtpNotice] = useState<string | null>(null);
+
+  // Master Recovery PIN state
+  const hasMasterPin = isMasterRecoveryPinConfigured(securitySettings);
+  const [masterPinInput, setMasterPinInput] = useState('');
+  const [showMasterPin, setShowMasterPin] = useState(false);
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+
+  // New Access Key state (Step 2 after recovery verification)
+  const [verifiedMethod, setVerifiedMethod] = useState<'email_otp' | 'master_pin'>('email_otp');
+  const [newKeyInput, setNewKeyInput] = useState('');
+  const [confirmKeyInput, setConfirmKeyInput] = useState('');
+  const [showNewKey, setShowNewKey] = useState(false);
+  const [showConfirmKey, setShowConfirmKey] = useState(false);
+  const [isSavingNewKey, setIsSavingNewKey] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const otpInputRef = useRef<HTMLInputElement>(null);
   const masterPinRef = useRef<HTMLInputElement>(null);
+  const newKeyRef = useRef<HTMLInputElement>(null);
 
   const folderColor =
     FOLDER_COLORS.find((c) => c.value === folder.color) || FOLDER_COLORS[0];
 
-  const hasMasterPin = isMasterRecoveryPinConfigured(securitySettings);
-
-  // Check lockout on mount and tick every second if active
+  // Lockout tick countdown
   useEffect(() => {
     const checkLockout = () => {
       const remaining = getFolderLockoutRemainingSeconds(folder.id);
       setLockoutRemaining(remaining);
-      if (remaining > 0 && unlockMode === 'standard') {
+      if (remaining > 0 && mode === 'standard') {
         setErrorMessage(
-          `Terlalu banyak percobaan salah. Silakan tunggu ${remaining} detik sebelum mencoba kembali.`
+          `Terlalu banyak percobaan salah (5x). Silakan tunggu ${remaining} detik sebelum mencoba kembali.`
         );
       } else if (errorMessage?.startsWith('Terlalu banyak') && remaining === 0) {
         setErrorMessage(null);
@@ -79,23 +119,40 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
     checkLockout();
     const interval = setInterval(checkLockout, 1000);
     return () => clearInterval(interval);
-  }, [folder.id, errorMessage, unlockMode]);
+  }, [folder.id, errorMessage, mode]);
 
+  // OTP cooldown countdown
   useEffect(() => {
-    if (unlockMode === 'standard' && lockoutRemaining === 0) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    } else if (unlockMode === 'recovery') {
-      setTimeout(() => masterPinRef.current?.focus(), 100);
-    }
-  }, [unlockMode, lockoutRemaining]);
+    if (otpCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setOtpCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [otpCooldown]);
 
-  // Standard unlock with folder key
+  // Focus management
+  useEffect(() => {
+    if (mode === 'standard' && lockoutRemaining === 0) {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    } else if (mode === 'email_otp' && otpSentOnce) {
+      setTimeout(() => otpInputRef.current?.focus(), 100);
+    } else if (mode === 'master_pin') {
+      setTimeout(() => masterPinRef.current?.focus(), 100);
+    } else if (mode === 'new_key') {
+      setTimeout(() => newKeyRef.current?.focus(), 100);
+    }
+  }, [mode, lockoutRemaining, otpSentOnce]);
+
+  // 1. Standard key submit
   const handleStandardSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!keyInput.trim() || isVerifying || lockoutRemaining > 0) return;
 
-    if (!folder.keyHash || !folder.keySalt) {
-      setErrorMessage('Konfigurasi kunci folder rusak atau tidak ditemukan.');
+    const hashToTest = folder.keyHash || securitySettings?.vaultAccessKeyHash;
+    const saltToTest = folder.keySalt || securitySettings?.vaultAccessKeySalt;
+
+    if (!hashToTest || !saltToTest) {
+      setErrorMessage('Konfigurasi Access Key folder tidak ditemukan.');
       return;
     }
 
@@ -103,7 +160,7 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
     setErrorMessage(null);
 
     try {
-      const isValid = await verifyFolderKey(keyInput.trim(), folder.keyHash, folder.keySalt);
+      const isValid = await verifyFolderKey(keyInput.trim(), hashToTest, saltToTest);
 
       if (isValid) {
         resetFailedAttempts(folder.id);
@@ -117,30 +174,106 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
             `Terlalu banyak percobaan salah (5x). Silakan tunggu ${lockoutStatus.lockoutSeconds} detik.`
           );
         } else {
-          setErrorMessage('Key salah. Silakan coba kembali atau gunakan Master Recovery PIN.');
+          setErrorMessage('Access Key salah. Silakan coba lagi atau gunakan pemulihan.');
         }
         setKeyInput('');
         inputRef.current?.focus();
       }
     } catch (err) {
       console.error('Key verification error:', err);
-      setErrorMessage('Terjadi kesalahan sistem saat memvalidasi key.');
+      setErrorMessage('Terjadi kesalahan saat memverifikasi Access Key.');
     } finally {
       setIsVerifying(false);
     }
   };
 
-  // Recovery unlock with Master Recovery PIN
-  const handleRecoverySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!masterPinInput.trim() || isVerifying) return;
+  // 2. Dispatch Email OTP
+  const handleSendEmailOtp = async () => {
+    if (!recoveryEmailConfig?.email || isSendingOtp || otpCooldown > 0) return;
 
-    if (!hasMasterPin || !securitySettings?.masterPinHash || !securitySettings?.masterPinSalt) {
-      setErrorMessage('Master Recovery PIN belum diatur.');
+    setIsSendingOtp(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setSimulatedOtpNotice(null);
+
+    try {
+      const res = await requestEmailOtp(
+        recoveryEmailConfig.email,
+        'reset_folder_access_key',
+        folder.id
+      );
+
+      if (res.success) {
+        setOtpSentOnce(true);
+        setOtpCooldown(res.resendAfterSeconds || 60);
+        setSuccessMessage('Kode OTP 6 digit berhasil dikirim ke email pemulihan Anda.');
+        if (res.simulatedOtp) {
+          setSimulatedOtpNotice(`[Mode Simulasi: Kode OTP Anda adalah ${res.simulatedOtp}]`);
+        }
+      } else {
+        setErrorMessage(res.error || 'Gagal mengirim kode OTP. Silakan coba lagi.');
+        if (res.resendAfterSeconds) {
+          setOtpCooldown(res.resendAfterSeconds);
+        }
+      }
+    } catch (err: any) {
+      console.error('Send OTP error:', err);
+      setErrorMessage(err.message || 'Terjadi kesalahan sistem saat mengirim kode OTP.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // 3. Verify Email OTP -> Proceed to Step 2 (Create New Access Key)
+  const handleVerifyEmailOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpInput.trim() || isVerifyingOtp || !recoveryEmailConfig?.email) return;
+
+    if (otpInput.trim().length !== 6) {
+      setErrorMessage('Kode OTP harus berupa 6 digit angka.');
       return;
     }
 
-    setIsVerifying(true);
+    setIsVerifyingOtp(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await verifyEmailOtp(
+        recoveryEmailConfig.email,
+        otpInput.trim(),
+        'reset_folder_access_key'
+      );
+
+      if (res.success) {
+        resetFailedAttempts(folder.id);
+        setSuccessMessage(null);
+        setErrorMessage(null);
+        setVerifiedMethod('email_otp');
+        setMode('new_key');
+      } else {
+        setErrorMessage(res.error || 'Kode OTP salah atau telah kedaluwarsa.');
+        setOtpInput('');
+        otpInputRef.current?.focus();
+      }
+    } catch (err: any) {
+      console.error('Verify OTP error:', err);
+      setErrorMessage(err.message || 'Gagal memverifikasi kode OTP.');
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  // 4. Verify Master Recovery PIN -> Proceed to Step 2 (Create New Access Key)
+  const handleVerifyMasterPin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!masterPinInput.trim() || isVerifyingPin) return;
+
+    if (!hasMasterPin || !securitySettings?.masterPinHash || !securitySettings?.masterPinSalt) {
+      setErrorMessage('Master Recovery PIN belum diatur di aplikasi.');
+      return;
+    }
+
+    setIsVerifyingPin(true);
     setErrorMessage(null);
 
     try {
@@ -151,61 +284,141 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
       );
 
       if (isMasterValid) {
-        // Reset any lockout for this folder
         resetFailedAttempts(folder.id);
-
-        if (recoveryAction === 'reset' && onResetLock) {
-          // Permanently reset/remove password on this folder
-          await onResetLock(folder.id);
-          onClose();
-        } else {
-          // Unlock just for this session
-          onUnlockSuccess(folder.id);
-          onClose();
-        }
+        setSuccessMessage(null);
+        setErrorMessage(null);
+        setVerifiedMethod('master_pin');
+        setMode('new_key');
       } else {
         setErrorMessage('Master Recovery PIN salah! Silakan periksa kembali PIN utama Anda.');
         setMasterPinInput('');
         masterPinRef.current?.focus();
       }
-    } catch (err) {
-      console.error('Master PIN verification error:', err);
-      setErrorMessage('Gagal memverifikasi Master Recovery PIN.');
+    } catch (err: any) {
+      console.error('Master PIN error:', err);
+      setErrorMessage(err.message || 'Gagal memverifikasi Master Recovery PIN.');
     } finally {
-      setIsVerifying(false);
+      setIsVerifyingPin(false);
     }
   };
 
-  const isLockedOut = lockoutRemaining > 0 && unlockMode === 'standard';
+  // 5. Submit New Access Key (Step 2)
+  const handleSaveNewKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSavingNewKey) return;
+
+    const key = newKeyInput.trim();
+    const confirm = confirmKeyInput.trim();
+
+    if (!key) {
+      setErrorMessage('Access Key baru tidak boleh kosong.');
+      return;
+    }
+
+    if (key.length < 4) {
+      setErrorMessage('Access Key baru minimal 4 karakter.');
+      return;
+    }
+
+    if (key !== confirm) {
+      setErrorMessage('Konfirmasi Access Key tidak cocok. Pastikan keduanya sama persis.');
+      return;
+    }
+
+    setIsSavingNewKey(true);
+    setErrorMessage(null);
+
+    try {
+      const { keyHash, keySalt } = await hashFolderKey(key);
+
+      if (onUpdateFolderKey) {
+        await onUpdateFolderKey(folder.id, keyHash, keySalt);
+      } else if (onSaveLockConfig) {
+        await onSaveLockConfig({
+          isLocked: true,
+          keyHash,
+          keySalt,
+          lockType: 'key',
+        });
+      }
+
+      resetFailedAttempts(folder.id);
+      onUnlockSuccess(folder.id);
+      onClose();
+    } catch (err: any) {
+      console.error('Save new key error:', err);
+      setErrorMessage(err.message || 'Gagal menyimpan Access Key baru ke database.');
+    } finally {
+      setIsSavingNewKey(false);
+    }
+  };
+
+  // Optional: Remove Lock Completely
+  const handleRemoveLockCompletely = async () => {
+    if (!onResetLock || isSavingNewKey) return;
+    setIsSavingNewKey(true);
+    try {
+      await onResetLock(folder.id);
+      resetFailedAttempts(folder.id);
+      onUnlockSuccess(folder.id);
+      onClose();
+    } catch (err: any) {
+      console.error('Reset lock error:', err);
+      setErrorMessage(err.message || 'Gagal menghapus proteksi folder.');
+    } finally {
+      setIsSavingNewKey(false);
+    }
+  };
+
+  const isLockedOut = lockoutRemaining > 0 && mode === 'standard';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
       <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden text-slate-200">
         
         {/* Modal Header */}
-        <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+        <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/70">
           <div className="flex items-center gap-2.5">
             <div
               className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-sm border ${
-                unlockMode === 'recovery'
-                  ? 'bg-rose-500/20 border-rose-500/30 text-rose-400'
-                  : 'bg-amber-500/20 border-amber-500/30 text-amber-400'
+                mode === 'new_key'
+                  ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                  : mode === 'email_otp'
+                  ? 'bg-blue-500/20 border-blue-500/30 text-blue-400'
+                  : mode === 'master_pin'
+                  ? 'bg-amber-500/20 border-amber-500/30 text-amber-400'
+                  : mode === 'recovery_choice'
+                  ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                  : 'bg-rose-500/20 border-rose-500/30 text-rose-400'
               }`}
             >
-              {unlockMode === 'recovery' ? (
+              {mode === 'new_key' ? (
+                <KeyRound className="w-4 h-4" />
+              ) : mode === 'email_otp' ? (
+                <Mail className="w-4 h-4" />
+              ) : mode === 'master_pin' ? (
                 <ShieldAlert className="w-4 h-4" />
+              ) : mode === 'recovery_choice' ? (
+                <HelpCircle className="w-4 h-4" />
               ) : (
-                <Lock className="w-4 h-4 text-red-500" />
+                <Lock className="w-4 h-4" />
               )}
             </div>
+
             <div>
               <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                {unlockMode === 'recovery' ? 'Master Recovery PIN' : 'Buka Kunci Folder'}
+                {mode === 'new_key' && 'Buat Access Key Baru'}
+                {mode === 'email_otp' && 'Pemulihan via Email OTP'}
+                {mode === 'master_pin' && 'Pemulihan via Master PIN'}
+                {mode === 'recovery_choice' && 'Pemulihan Access Key'}
+                {mode === 'standard' && 'Buka Kunci Folder'}
               </h2>
               <p className="text-xs text-slate-400">
-                {unlockMode === 'recovery'
-                  ? 'Pemulihan Kunci dengan PIN Utama'
-                  : 'Proteksi Privasi & Konten'}
+                {mode === 'new_key' && `Folder: ${folder.name} — Data aman`}
+                {mode === 'email_otp' && 'Verifikasi kode OTP 6 digit'}
+                {mode === 'master_pin' && 'Verifikasi PIN pemulihan darurat'}
+                {mode === 'recovery_choice' && 'Pilih metode pemulihan mandiri'}
+                {mode === 'standard' && 'Proteksi Privasi & Konten'}
               </p>
             </div>
           </div>
@@ -220,53 +433,19 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
           </button>
         </div>
 
-        {/* Mode Switcher Tabs */}
-        <div className="grid grid-cols-2 p-1.5 bg-slate-950/80 border-b border-slate-800 text-xs font-semibold">
-          <button
-            type="button"
-            onClick={() => {
-              setUnlockMode('standard');
-              setErrorMessage(null);
-            }}
-            className={`flex items-center justify-center gap-2 py-2 rounded-xl transition-all ${
-              unlockMode === 'standard'
-                ? 'bg-slate-800 text-slate-100 shadow-sm border border-slate-700'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-            <span>Key Folder</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setUnlockMode('recovery');
-              setErrorMessage(null);
-            }}
-            className={`flex items-center justify-center gap-2 py-2 rounded-xl transition-all ${
-              unlockMode === 'recovery'
-                ? 'bg-rose-950/60 text-rose-200 shadow-sm border border-rose-500/40'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-            <span>Master Recovery PIN</span>
-          </button>
-        </div>
-
-        {/* Modal Body */}
-        {unlockMode === 'standard' ? (
-          /* STANDARD MODE: KEY FOLDER */
+        {/* ======================================================== */}
+        {/* VIEW 1: STANDARD UNLOCK */}
+        {/* ======================================================== */}
+        {mode === 'standard' && (
           <form onSubmit={handleStandardSubmit} className="p-6 space-y-5">
             {/* Target Folder Pill */}
             <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-950 border border-slate-800/80">
-              <div className={`w-7 h-7 rounded-lg ${folderColor.bg} flex items-center justify-center text-white shrink-0`}>
-                <Lock className="w-3.5 h-3.5 text-red-500" />
+              <div className={`w-8 h-8 rounded-lg ${folderColor.bg} flex items-center justify-center text-white shrink-0 shadow-sm`}>
+                <Lock className="w-4 h-4 text-rose-300" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-bold text-slate-200 truncate">{folder.name}</div>
-                <div className="text-[11px] text-slate-500">Status: Terkunci (Perlu Key Folder)</div>
+                <div className="text-[11px] text-slate-500">Folder Dilindungi Access Key</div>
               </div>
             </div>
 
@@ -274,18 +453,19 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
               <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                  Masukkan Key Folder
+                  Masukkan Access Key Folder
                 </span>
                 <button
                   type="button"
                   onClick={() => {
-                    setUnlockMode('recovery');
                     setErrorMessage(null);
+                    setMode('recovery_choice');
                   }}
-                  className="text-[11px] text-indigo-400 hover:text-indigo-300 font-normal hover:underline flex items-center gap-1"
+                  className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium hover:underline flex items-center gap-1"
+                  id="forgot-key-btn"
                 >
                   <HelpCircle className="w-3 h-3" />
-                  <span>Lupa Password?</span>
+                  <span>Lupa Kunci Akses?</span>
                 </button>
               </label>
 
@@ -296,7 +476,7 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
                   type={showKey ? 'text' : 'password'}
                   value={keyInput}
                   onChange={(e) => setKeyInput(e.target.value)}
-                  placeholder="Masukkan Key folder..."
+                  placeholder="Masukkan Access Key folder..."
                   disabled={isLockedOut || isVerifying}
                   autoComplete="off"
                   className={`w-full bg-slate-950 border text-slate-100 text-sm rounded-xl pl-3.5 pr-11 py-3 outline-none transition-all font-mono ${
@@ -337,8 +517,8 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
                 <div className="flex-1 leading-relaxed">
                   <span className="font-semibold block">{errorMessage}</span>
                   {isLockedOut && (
-                    <span className="text-[11px] opacity-80 mt-0.5 block">
-                      Atau gunakan tab <strong>Master Recovery PIN</strong> untuk membuka langsung tanpa menunggu.
+                    <span className="text-[11px] opacity-80 mt-1 block">
+                      Atau gunakan fitur <strong>Lupa Kunci Akses?</strong> untuk memulihkan akses tanpa menunggu.
                     </span>
                   )}
                 </div>
@@ -350,13 +530,13 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setUnlockMode('recovery');
                   setErrorMessage(null);
+                  setMode('recovery_choice');
                 }}
-                className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1.5 font-medium"
+                className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1.5 font-medium"
               >
-                <ShieldAlert className="w-3.5 h-3.5" />
-                <span>Gunakan Master PIN</span>
+                <HelpCircle className="w-3.5 h-3.5" />
+                <span>Opsi Pemulihan</span>
               </button>
 
               <div className="flex items-center gap-2">
@@ -391,179 +571,536 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
               </div>
             </div>
           </form>
-        ) : (
-          /* RECOVERY MODE: MASTER RECOVERY PIN */
-          <form onSubmit={handleRecoverySubmit} className="p-6 space-y-5">
-            {/* Info Banner */}
-            <div className="p-3.5 rounded-2xl bg-rose-950/30 border border-rose-500/30 text-xs space-y-1.5">
-              <div className="flex items-center gap-2 font-bold text-rose-300">
-                <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>Master Recovery PIN</span>
-              </div>
-              <p className="text-slate-300 text-[11px] leading-relaxed">
-                PIN utama cadangan ini dapat digunakan untuk membuka atau mereset proteksi folder jika Anda lupa password folder.
+        )}
+
+        {/* ======================================================== */}
+        {/* VIEW 2: RECOVERY METHOD SELECTION */}
+        {/* ======================================================== */}
+        {mode === 'recovery_choice' && (
+          <div className="p-6 space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-slate-200">Pilih Metode Pemulihan</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Pilih salah satu metode berikut untuk memverifikasi identitas Anda dan membuat Access Key baru:
               </p>
             </div>
 
-            {!hasMasterPin ? (
-              /* Master PIN is NOT configured yet */
-              <div className="p-4 bg-slate-950/80 border border-amber-500/30 rounded-2xl space-y-3 text-center">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto border border-amber-500/30">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div className="space-y-1">
-                  <h4 className="text-xs font-bold text-slate-200">Master Recovery PIN Belum Diatur</h4>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    Anda belum mengonfigurasi Master Recovery PIN di aplikasi. Atur Master PIN sekarang melalui menu Pengaturan agar selalu memiliki cadangan akses.
-                  </p>
-                </div>
-
-                {onOpenSettings && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenSettings();
-                    }}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 mx-auto shadow-md"
+            <div className="space-y-3 pt-1">
+              {/* OPSI 1: EMAIL OTP */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  isEmailVerified
+                    ? 'bg-slate-950/70 border-blue-500/30 hover:border-blue-500/60 hover:bg-blue-950/20'
+                    : 'bg-slate-950/40 border-slate-800/80 opacity-90'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                      isEmailVerified
+                        ? 'bg-blue-500/20 border-blue-500/30 text-blue-400'
+                        : 'bg-slate-800 border-slate-700 text-slate-500'
+                    }`}
                   >
-                    <SettingsIcon className="w-3.5 h-3.5" />
-                    <span>Buka Pengaturan & Atur PIN</span>
-                  </button>
-                )}
+                    <Mail className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-slate-200">1. Pulihkan via Email OTP</span>
+                      {isEmailVerified ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
+                          Terverifikasi
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                          Belum Aktif
+                        </span>
+                      )}
+                    </div>
+
+                    {isEmailVerified ? (
+                      <>
+                        <p className="text-[11px] text-slate-400">
+                          Kirim kode 6 digit ke{' '}
+                          <span className="font-mono text-blue-300 font-semibold">
+                            {maskEmail(recoveryEmailConfig?.email || '')}
+                          </span>
+                        </p>
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setErrorMessage(null);
+                              setMode('email_otp');
+                              if (!otpSentOnce) {
+                                handleSendEmailOtp();
+                              }
+                            }}
+                            className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                            id="choose-email-otp-btn"
+                          >
+                            <Mail className="w-3.5 h-3.5" />
+                            <span>Gunakan Email OTP</span>
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-2 pt-1">
+                        <p className="text-[11px] text-amber-300/90 leading-relaxed bg-amber-950/30 p-2.5 rounded-xl border border-amber-500/20">
+                          Email pemulihan belum tersedia. Silakan gunakan Master Recovery PIN atau daftarkan email pemulihan melalui Pengaturan Keamanan.
+                        </p>
+                        {onOpenSettings && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              onOpenSettings();
+                            }}
+                            className="text-[11px] text-blue-400 hover:text-blue-300 flex items-center gap-1 font-medium hover:underline"
+                          >
+                            <SettingsIcon className="w-3 h-3" />
+                            <span>Buka Pengaturan untuk daftarkan email</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            ) : (
-              /* Master PIN is configured */
-              <>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <Key className="w-3.5 h-3.5 text-rose-400" />
-                      Masukkan Master Recovery PIN
-                    </span>
-                  </label>
 
-                  <div className="relative">
-                    <input
-                      ref={masterPinRef}
-                      type={showMasterPin ? 'text' : 'password'}
-                      value={masterPinInput}
-                      onChange={(e) => setMasterPinInput(e.target.value)}
-                      placeholder="Masukkan Master Recovery PIN Anda..."
-                      disabled={isVerifying}
-                      autoComplete="off"
-                      className="w-full bg-slate-950 border border-rose-500/30 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 text-slate-100 text-sm rounded-xl pl-3.5 pr-11 py-3 outline-none transition-all font-mono"
-                      id="master-recovery-pin-input"
-                    />
+              {/* OPSI 2: MASTER RECOVERY PIN */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  hasMasterPin
+                    ? 'bg-slate-950/70 border-amber-500/30 hover:border-amber-500/60 hover:bg-amber-950/20'
+                    : 'bg-slate-950/40 border-slate-800/80 opacity-90'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                      hasMasterPin
+                        ? 'bg-amber-500/20 border-amber-500/30 text-amber-400'
+                        : 'bg-slate-800 border-slate-700 text-slate-500'
+                    }`}
+                  >
+                    <ShieldAlert className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-slate-200">2. Pulihkan via Master Recovery PIN</span>
+                      {hasMasterPin ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
+                          PIN Siap
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                          Belum Diatur
+                        </span>
+                      )}
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setShowMasterPin(!showMasterPin)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-200 rounded-lg transition-colors"
-                      title={showMasterPin ? 'Sembunyikan PIN' : 'Tampilkan PIN'}
-                    >
-                      {showMasterPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                    {hasMasterPin ? (
+                      <>
+                        <p className="text-[11px] text-slate-400">
+                          Gunakan PIN keamanan utama Anda untuk verifikasi identitas dan atur Access Key baru.
+                        </p>
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setErrorMessage(null);
+                              setMode('master_pin');
+                            }}
+                            className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                            id="choose-master-pin-btn"
+                          >
+                            <Key className="w-3.5 h-3.5" />
+                            <span>Gunakan Master Recovery PIN</span>
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-2 pt-1">
+                        <p className="text-[11px] text-slate-400 leading-relaxed bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                          Master Recovery PIN belum dikonfigurasi di aplikasi ini.
+                        </p>
+                        {onOpenSettings && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              onOpenSettings();
+                            }}
+                            className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 font-medium hover:underline"
+                          >
+                            <SettingsIcon className="w-3 h-3" />
+                            <span>Atur Master PIN di Pengaturan</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
+              </div>
+            </div>
 
-                {/* Recovery Action Chooser */}
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-300 block">
-                    Pilih Tindakan Pemulihan:
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setRecoveryAction('unlock')}
-                      className={`p-2.5 rounded-xl border text-left text-xs transition-all flex flex-col gap-1 ${
-                        recoveryAction === 'unlock'
-                          ? 'bg-rose-950/50 border-rose-500 text-rose-200 font-semibold'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <Unlock className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Buka Sesi Ini</span>
-                      </div>
-                      <span className="text-[10px] opacity-75 font-normal">
-                        Buka sementara tanpa mengubah password folder
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setRecoveryAction('reset')}
-                      className={`p-2.5 rounded-xl border text-left text-xs transition-all flex flex-col gap-1 ${
-                        recoveryAction === 'reset'
-                          ? 'bg-rose-950/50 border-rose-500 text-rose-200 font-semibold'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Reset Kunci Folder</span>
-                      </div>
-                      <span className="text-[10px] opacity-75 font-normal">
-                        Hapus password folder & jadikan folder biasa
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Error Alert */}
-                {errorMessage && (
-                  <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 text-xs flex items-start gap-2.5 animate-shake">
-                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
-                    <span className="font-semibold leading-relaxed">{errorMessage}</span>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
               <button
                 type="button"
                 onClick={() => {
-                  setUnlockMode('standard');
                   setErrorMessage(null);
+                  setMode('standard');
                 }}
                 className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1.5"
               >
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>Kembali ke Key Folder</span>
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Kembali ke Input Kunci</span>
               </button>
 
-              <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 bg-slate-800 rounded-xl"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* VIEW 3: EMAIL OTP VERIFICATION */}
+        {/* ======================================================== */}
+        {mode === 'email_otp' && (
+          <form onSubmit={handleVerifyEmailOtp} className="p-6 space-y-4">
+            <div className="p-3.5 rounded-2xl bg-blue-950/40 border border-blue-500/30 text-xs space-y-1.5">
+              <div className="flex items-center gap-2 font-bold text-blue-300">
+                <Mail className="w-4 h-4 text-blue-400 shrink-0" />
+                <span>Verifikasi Email Terdaftar</span>
+              </div>
+              <p className="text-slate-300 text-[11px] leading-relaxed">
+                Kode verifikasi 6 digit dikirimkan ke:{' '}
+                <strong className="font-mono text-blue-300">{maskEmail(recoveryEmailConfig?.email || '')}</strong>
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                <span>Masukkan Kode OTP 6 Digit:</span>
+                <span className="text-[10px] text-slate-500">Berlaku 5 menit</span>
+              </label>
+
+              <input
+                ref={otpInputRef}
+                type="text"
+                maxLength={6}
+                value={otpInput}
+                onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                placeholder="123456"
+                disabled={isVerifyingOtp}
+                className="w-full bg-slate-950 border border-blue-500/40 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-slate-100 text-center tracking-[0.4em] font-mono text-xl py-3 rounded-xl outline-none"
+                autoComplete="one-time-code"
+                id="email-otp-input"
+              />
+            </div>
+
+            {/* Resend Cooldown UI */}
+            <div className="flex items-center justify-between text-xs pt-1">
+              <span className="text-[11px] text-slate-400">Tidak menerima kode?</span>
+              {otpCooldown > 0 ? (
+                <span className="text-[11px] text-slate-500 flex items-center gap-1 font-mono">
+                  <Clock className="w-3 h-3 text-blue-400" />
+                  <span>Kirim ulang ({otpCooldown}s)</span>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSendEmailOtp}
+                  disabled={isSendingOtp}
+                  className="text-[11px] text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold hover:underline"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isSendingOtp ? 'animate-spin' : ''}`} />
+                  <span>{isSendingOtp ? 'Mengirim...' : 'Kirim Ulang Kode OTP'}</span>
+                </button>
+              )}
+            </div>
+
+            {/* Simulated OTP notice if in dev mode */}
+            {simulatedOtpNotice && (
+              <div className="p-2.5 rounded-xl bg-indigo-950/50 border border-indigo-500/30 text-indigo-300 text-[11px] font-mono flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span>{simulatedOtpNotice}</span>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-shake">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            {/* Success Message */}
+            {successMessage && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                <span>{successMessage}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorMessage(null);
+                  setSuccessMessage(null);
+                  setMode('recovery_choice');
+                }}
+                className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Ganti Metode</span>
+              </button>
+
+              <button
+                type="submit"
+                disabled={otpInput.trim().length !== 6 || isVerifyingOtp}
+                className={`px-5 py-2.5 text-xs font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 ${
+                  otpInput.trim().length !== 6 || isVerifyingOtp
+                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
+                    : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30 active:scale-95'
+                }`}
+                id="submit-verify-otp-btn"
+              >
+                {isVerifyingOtp ? (
+                  <span>Memvalidasi...</span>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Verifikasi Kode OTP</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* ======================================================== */}
+        {/* VIEW 4: MASTER RECOVERY PIN VERIFICATION */}
+        {/* ======================================================== */}
+        {mode === 'master_pin' && (
+          <form onSubmit={handleVerifyMasterPin} className="p-6 space-y-4">
+            <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-xs space-y-1.5">
+              <div className="flex items-center gap-2 font-bold text-amber-300">
+                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Verifikasi Master Recovery PIN</span>
+              </div>
+              <p className="text-slate-300 text-[11px] leading-relaxed">
+                Masukkan PIN darurat yang telah Anda konfigurasikan di menu Keamanan.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-300 block">
+                Masukkan Master Recovery PIN:
+              </label>
+
+              <div className="relative">
+                <input
+                  ref={masterPinRef}
+                  type={showMasterPin ? 'text' : 'password'}
+                  value={masterPinInput}
+                  onChange={(e) => setMasterPinInput(e.target.value)}
+                  placeholder="Masukkan Master PIN Anda..."
+                  disabled={isVerifyingPin}
+                  autoComplete="off"
+                  className="w-full bg-slate-950 border border-amber-500/40 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 text-slate-100 text-sm rounded-xl pl-3.5 pr-11 py-3 outline-none font-mono"
+                  id="master-pin-input"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowMasterPin(!showMasterPin)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-200 rounded-lg transition-colors"
+                  title={showMasterPin ? 'Sembunyikan PIN' : 'Tampilkan PIN'}
+                >
+                  {showMasterPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-shake">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorMessage(null);
+                  setMode('recovery_choice');
+                }}
+                className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Ganti Metode</span>
+              </button>
+
+              <button
+                type="submit"
+                disabled={!masterPinInput.trim() || isVerifyingPin}
+                className={`px-5 py-2.5 text-xs font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 ${
+                  !masterPinInput.trim() || isVerifyingPin
+                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
+                    : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30 active:scale-95'
+                }`}
+                id="submit-verify-master-pin-btn"
+              >
+                {isVerifyingPin ? (
+                  <span>Memvalidasi...</span>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Verifikasi PIN</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* ======================================================== */}
+        {/* VIEW 5: STEP 2 - BUAT ACCESS KEY BARU */}
+        {/* ======================================================== */}
+        {mode === 'new_key' && (
+          <form onSubmit={handleSaveNewKey} className="p-6 space-y-4">
+            {/* Verification Success Pill */}
+            <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 text-xs space-y-1.5">
+              <div className="flex items-center gap-2 font-bold text-emerald-300">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Verifikasi Identitas Berhasil!</span>
+              </div>
+              <p className="text-slate-300 text-[11px] leading-relaxed">
+                Terverifikasi melalui{' '}
+                <strong className="text-emerald-300">
+                  {verifiedMethod === 'email_otp' ? 'Email OTP' : 'Master Recovery PIN'}
+                </strong>
+                . Silakan tentukan Access Key baru untuk folder{' '}
+                <strong className="text-slate-100">"{folder.name}"</strong>. Semua data prompt tersimpan aman.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {/* Field 1: New Key */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 block">
+                  Access Key Baru (min 4 karakter):
+                </label>
+                <div className="relative">
+                  <input
+                    ref={newKeyRef}
+                    type={showNewKey ? 'text' : 'password'}
+                    value={newKeyInput}
+                    onChange={(e) => setNewKeyInput(e.target.value)}
+                    placeholder="Masukkan Access Key baru..."
+                    disabled={isSavingNewKey}
+                    autoComplete="off"
+                    className="w-full bg-slate-950 border border-emerald-500/40 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-slate-100 text-sm rounded-xl pl-3.5 pr-11 py-2.5 outline-none font-mono"
+                    id="new-access-key-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewKey(!showNewKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-200 rounded-lg transition-colors"
+                  >
+                    {showNewKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Field 2: Confirm New Key */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 block">
+                  Konfirmasi Access Key Baru:
+                </label>
+                <div className="relative">
+                  <input
+                    type={showConfirmKey ? 'text' : 'password'}
+                    value={confirmKeyInput}
+                    onChange={(e) => setConfirmKeyInput(e.target.value)}
+                    placeholder="Ulangi Access Key baru..."
+                    disabled={isSavingNewKey}
+                    autoComplete="off"
+                    className="w-full bg-slate-950 border border-emerald-500/40 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-slate-100 text-sm rounded-xl pl-3.5 pr-11 py-2.5 outline-none font-mono"
+                    id="confirm-new-access-key-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmKey(!showConfirmKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-200 rounded-lg transition-colors"
+                  >
+                    {showConfirmKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-shake">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+              {onResetLock && (
+                <button
+                  type="button"
+                  onClick={handleRemoveLockCompletely}
+                  disabled={isSavingNewKey}
+                  className="text-xs text-rose-400 hover:text-rose-300 hover:underline flex items-center gap-1"
+                  title="Hilangkan kunci folder ini sehingga menjadi folder publik biasa"
+                >
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>Hapus Kunci Saja</span>
+                </button>
+              )}
+
+              <div className="flex items-center gap-2 ml-auto">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-slate-200 bg-slate-800/80 hover:bg-slate-800 rounded-xl transition-all"
+                  className="px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-slate-200 bg-slate-800 rounded-xl"
                 >
                   Batal
                 </button>
 
-                {hasMasterPin && (
-                  <button
-                    type="submit"
-                    disabled={!masterPinInput.trim() || isVerifying}
-                    className={`px-5 py-2.5 text-xs font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 ${
-                      !masterPinInput.trim() || isVerifying
-                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
-                        : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30 active:scale-95'
-                    }`}
-                  >
-                    {isVerifying ? (
-                      <span>Memproses...</span>
-                    ) : (
-                      <>
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>{recoveryAction === 'reset' ? 'Reset Kunci' : 'Buka Folder'}</span>
-                      </>
-                    )}
-                  </button>
-                )}
+                <button
+                  type="submit"
+                  disabled={!newKeyInput.trim() || !confirmKeyInput.trim() || isSavingNewKey}
+                  className={`px-5 py-2.5 text-xs font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 ${
+                    !newKeyInput.trim() || !confirmKeyInput.trim() || isSavingNewKey
+                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 active:scale-95'
+                  }`}
+                  id="save-new-key-btn"
+                >
+                  {isSavingNewKey ? (
+                    <span>Menyimpan ke Cloud...</span>
+                  ) : (
+                    <>
+                      <KeyRound className="w-4 h-4" />
+                      <span>Simpan & Buka Folder</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </form>
