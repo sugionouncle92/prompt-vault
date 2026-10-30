@@ -667,12 +667,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[90vh] max-h-[90vh]">
         
-        {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/80 sticky top-0 z-10">
+        {/* 1. Modal Header */}
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900 shrink-0 z-30">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
               <SettingsIcon className="w-5 h-5 animate-spin-slow" />
             </div>
             <div>
@@ -721,97 +721,109 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-slate-800 bg-slate-950/40 px-6 gap-2 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('theme')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
-              activeTab === 'theme'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
+        {/* 2. Navigation Tabs */}
+        <div className="shrink-0 w-full bg-slate-950/80 border-b border-slate-800 relative z-20">
+          <nav
+            className="flex items-center px-4 sm:px-6 gap-2 overflow-x-auto overflow-y-hidden min-h-[52px]"
+            aria-label="Settings Navigation"
           >
-            <Sun className="w-4 h-4" />
-            <span>Tema & Tampilan</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('theme')}
+              className={`shrink-0 relative flex items-center gap-2 py-3 px-4 text-xs font-semibold rounded-t-xl transition-all whitespace-nowrap -mb-px border-b-2 ${
+                activeTab === 'theme'
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Sun className="w-4 h-4 shrink-0" />
+              <span>Tema & Tampilan</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('gallery')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
-              activeTab === 'gallery'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Layout className="w-4 h-4" />
-            <span>Galeri & Layout</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('gallery')}
+              className={`shrink-0 relative flex items-center gap-2 py-3 px-4 text-xs font-semibold rounded-t-xl transition-all whitespace-nowrap -mb-px border-b-2 ${
+                activeTab === 'gallery'
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Layout className="w-4 h-4 shrink-0" />
+              <span>Galeri & Layout</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('ai')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
-              activeTab === 'ai'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Cpu className="w-4 h-4" />
-            <span>Pengaturan AI</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('ai')}
+              className={`shrink-0 relative flex items-center gap-2 py-3 px-4 text-xs font-semibold rounded-t-xl transition-all whitespace-nowrap -mb-px border-b-2 ${
+                activeTab === 'ai'
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Cpu className="w-4 h-4 shrink-0" />
+              <span>Pengaturan AI</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('upload')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
-              activeTab === 'upload'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <UploadCloud className="w-4 h-4" />
-            <span>Upload, Crop & Ekspor</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('upload')}
+              className={`shrink-0 relative flex items-center gap-2 py-3 px-4 text-xs font-semibold rounded-t-xl transition-all whitespace-nowrap -mb-px border-b-2 ${
+                activeTab === 'upload'
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <UploadCloud className="w-4 h-4 shrink-0" />
+              <span>Upload, Crop & Ekspor</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('security')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
-              activeTab === 'security'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-            id="settings-security-tab-btn"
-          >
-            <Shield className="w-4 h-4 text-emerald-400" />
-            <span>Keamanan & Kunci Akses</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('security')}
+              className={`shrink-0 relative flex items-center gap-2 py-3 px-4 text-xs font-semibold rounded-t-xl transition-all whitespace-nowrap -mb-px border-b-2 ${
+                activeTab === 'security'
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+              id="settings-security-tab-btn"
+            >
+              <Shield className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Keamanan & Kunci Akses</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('preferences')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
-              activeTab === 'preferences'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Sliders className="w-4 h-4" />
-            <span>Preferensi & Database</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('preferences')}
+              className={`shrink-0 relative flex items-center gap-2 py-3 px-4 text-xs font-semibold rounded-t-xl transition-all whitespace-nowrap -mb-px border-b-2 ${
+                activeTab === 'preferences'
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Sliders className="w-4 h-4 shrink-0" />
+              <span>Preferensi & Database</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('pwa')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
-              activeTab === 'pwa'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-            id="settings-pwa-tab-btn"
-          >
-            <Smartphone className="w-4 h-4 text-emerald-400" />
-            <span>PWA & Android App</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('pwa')}
+              className={`shrink-0 relative flex items-center gap-2 py-3 px-4 text-xs font-semibold rounded-t-xl transition-all whitespace-nowrap -mb-px border-b-2 ${
+                activeTab === 'pwa'
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+              id="settings-pwa-tab-btn"
+            >
+              <Smartphone className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>PWA & Android App</span>
+            </button>
+          </nav>
         </div>
 
-        {/* Tab Content */}
-        <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-200 text-sm">
+        {/* 3. Container Konten Pengaturan */}
+        <div className="p-6 overflow-y-auto space-y-6 flex-1 min-h-0 text-slate-200 text-sm relative z-10">
           
           {/* TAB 1: TEMA & TAMPILAN */}
           {activeTab === 'theme' && (
@@ -2292,8 +2304,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
         </div>
 
-        {/* Modal Footer */}
-        <div className="px-6 py-3 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between">
+        {/* 4. Modal Footer */}
+        <div className="px-6 py-3 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between shrink-0 z-30">
           <p className="text-[11px] text-slate-500">
             Path Dokumen: <code className="text-indigo-400 font-mono">app/settings/current/main</code>
           </p>
