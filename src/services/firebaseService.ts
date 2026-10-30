@@ -40,15 +40,6 @@ export function sanitizeFirestorePayload<T extends Record<string, any>>(obj: T):
   return clean;
 }
 
-export type RecoveryEmailStatus = 'unregistered' | 'pending' | 'verified';
-
-export interface RecoveryEmailConfig {
-  email: string;
-  status: RecoveryEmailStatus;
-  verifiedAt?: string;
-  updatedAt?: string;
-}
-
 export interface AppSecuritySettings {
   isGlobalAppLockEnabled?: boolean; // Deprecated in v2.1 (kept for backwards compatibility)
   isVaultAccessKeyEnabled?: boolean;
@@ -61,7 +52,6 @@ export interface AppSecuritySettings {
   isMasterPinSet?: boolean;
   masterPinHash?: string;
   masterPinSalt?: string;
-  recoveryEmail?: RecoveryEmailConfig;
   autoLockDuration?: 'immediate' | 'refresh' | '1min' | '5min' | '15min' | '30min' | 'unload';
   updatedAt?: string;
 }
@@ -172,10 +162,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     isMasterPinSet: false,
     masterPinHash: '',
     masterPinSalt: '',
-    recoveryEmail: {
-      email: '',
-      status: 'unregistered',
-    },
     autoLockDuration: '5min',
   },
   lastPage: 'vault',

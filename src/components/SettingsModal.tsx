@@ -28,14 +28,13 @@ import {
   Unlock,
   Shield,
   ShieldCheck,
-  Mail,
   KeyRound,
   Loader2,
   Info,
   Clock,
   Folder,
 } from 'lucide-react';
-import { AppSettings, saveSettingsToFirebase, AppSecuritySettings, RecoveryEmailConfig } from '../services/firebaseService';
+import { AppSettings, saveSettingsToFirebase, AppSecuritySettings } from '../services/firebaseService';
 import { FolderItem, FOLDER_COLORS } from '../types';
 import appLogo from '../assets/logo-192.png';
 import { usePWA } from '../hooks/usePWA';
@@ -48,11 +47,6 @@ import {
   isMasterRecoveryPinConfigured,
   getEffectiveMasterFolderCredentials,
 } from '../utils/security';
-import {
-  requestEmailOtp,
-  verifyEmailOtp,
-  maskEmail,
-} from '../utils/emailOtp';
 
 interface SettingsModalProps {
   settings: AppSettings;
@@ -117,29 +111,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSuccess, setPinSuccess] = useState<string | null>(null);
   const [isSavingPin, setIsSavingPin] = useState(false);
-
-  // --- Recovery Email State ---
-  const recoveryEmailConfig = settings.security?.recoveryEmail;
-  const emailStatus: 'unregistered' | 'pending' | 'verified' =
-    recoveryEmailConfig?.status || (recoveryEmailConfig?.email ? 'verified' : 'unregistered');
-  const [emailInput, setEmailInput] = useState(recoveryEmailConfig?.email || '');
-  const [showChangeEmailForm, setShowChangeEmailForm] = useState(false);
-  const [otpInput, setOtpInput] = useState('');
-  const [otpCooldown, setOtpCooldown] = useState(0);
-  const [isSendingEmailOtp, setIsSendingEmailOtp] = useState(false);
-  const [isVerifyingEmailOtp, setIsVerifyingEmailOtp] = useState(false);
-  const [emailOtpError, setEmailOtpError] = useState<string | null>(null);
-  const [emailOtpSuccess, setEmailOtpSuccess] = useState<string | null>(null);
-  const [simulatedOtpNotice, setSimulatedOtpNotice] = useState<string | null>(null);
-
-  // OTP cooldown timer
-  useEffect(() => {
-    if (otpCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setOtpCooldown((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [otpCooldown]);
 
   // Helper to update security settings
   const updateSecuritySetting = (patch: Partial<AppSecuritySettings>) => {
@@ -1247,298 +1218,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* ======================================================== */}
-              {/* SUBSECTION C: EMAIL PEMULIHAN */}
-              {/* ======================================================== */}
-              <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Mail className="w-4 h-4 text-indigo-400 shrink-0" />
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-100 uppercase tracking-wider">
-                        C. Email Pemulihan (Email OTP)
-                      </h4>
-                      <p className="text-[11px] text-slate-400">
-                        Metode pemulihan alternatif via kode OTP 6 digit
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-xs px-2.5 py-1 rounded-full border font-semibold flex items-center gap-1.5 ${
-                        emailStatus === 'verified'
-                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                          : emailStatus === 'pending'
-                          ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-                          : 'bg-slate-800 border-slate-700 text-slate-400'
-                      }`}
-                    >
-                      {emailStatus === 'verified' && (
-                        <>
-                          <Check className="w-3.5 h-3.5" />
-                          <span>TERVERIFIKASI</span>
-                        </>
-                      )}
-                      {emailStatus === 'pending' && (
-                        <>
-                          <Clock className="w-3.5 h-3.5 animate-pulse" />
-                          <span>MENUNGGU VERIFIKASI</span>
-                        </>
-                      )}
-                      {emailStatus === 'unregistered' && <span>BELUM TERDAFTAR</span>}
-                    </span>
-                  </div>
-                </div>
-
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Email pemulihan digunakan untuk mengirim kode OTP 6 digit saat Anda lupa Master Folder Password. Kode OTP berlaku 5 menit dengan batas percobaan maksimal 5 kali.
-                </p>
-
-                {simulatedOtpNotice && (
-                  <div className="p-3 bg-amber-500/15 border border-amber-500/30 rounded-xl text-xs text-amber-200 font-mono">
-                    {simulatedOtpNotice}
-                  </div>
-                )}
-
-                {emailOtpSuccess && (
-                  <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>{emailOtpSuccess}</span>
-                  </div>
-                )}
-
-                {emailOtpError && (
-                  <div className="p-3 bg-rose-950/40 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                    <span>{emailOtpError}</span>
-                  </div>
-                )}
-
-                {/* State 1: Verified Email Display */}
-                {emailStatus === 'verified' && !showChangeEmailForm && (
-                  <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="space-y-0.5">
-                      <div className="text-[11px] text-slate-400 font-medium">Alamat Email Terdaftar:</div>
-                      <div className="text-sm font-bold text-slate-100 font-mono">
-                        {maskEmail(recoveryEmailConfig?.email || '')}
-                      </div>
-                      {recoveryEmailConfig?.verifiedAt && (
-                        <div className="text-[10px] text-emerald-400">
-                          Diverifikasi pada: {new Date(recoveryEmailConfig.verifiedAt).toLocaleDateString('id-ID')}
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowChangeEmailForm(true);
-                        setEmailOtpError(null);
-                        setEmailOtpSuccess(null);
-                        setEmailInput('');
-                      }}
-                      className="px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors"
-                    >
-                      Ganti Alamat Email
-                    </button>
-                  </div>
-                )}
-
-                {/* State 2: Pending OTP Verification */}
-                {emailStatus === 'pending' && (
-                  <div className="p-4 bg-slate-900 border border-amber-500/30 rounded-xl space-y-3.5">
-                    <div className="space-y-1">
-                      <div className="text-xs font-bold text-amber-300">
-                        Kode verifikasi telah dikirim ke: <span className="font-mono">{emailInput}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-400">
-                        Masukkan 6 digit kode OTP yang kami kirimkan untuk memverifikasi kepemilikan email.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-2.5">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        value={otpInput}
-                        onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
-                        placeholder="6 Digit OTP..."
-                        className="bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono tracking-widest max-w-xs"
-                      />
-
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!otpInput.trim() || isVerifyingEmailOtp) return;
-                          setIsVerifyingEmailOtp(true);
-                          setEmailOtpError(null);
-                          setEmailOtpSuccess(null);
-                          try {
-                            const res = await verifyEmailOtp(emailInput, otpInput.trim(), 'verify_email');
-                            if (res.success) {
-                              const updatedEmailConfig: RecoveryEmailConfig = {
-                                email: emailInput.trim().toLowerCase(),
-                                status: 'verified',
-                                verifiedAt: new Date().toISOString(),
-                                updatedAt: new Date().toISOString(),
-                              };
-                              updateSecuritySetting({ recoveryEmail: updatedEmailConfig });
-                              setEmailOtpSuccess('Email pemulihan berhasil diverifikasi!');
-                              setShowChangeEmailForm(false);
-                              setOtpInput('');
-                            } else {
-                              setEmailOtpError(res.error || 'Kode OTP tidak valid.');
-                            }
-                          } catch (err: any) {
-                            setEmailOtpError(err.message || 'Gagal memverifikasi OTP.');
-                          } finally {
-                            setIsVerifyingEmailOtp(false);
-                          }
-                        }}
-                        disabled={isVerifyingEmailOtp || otpInput.trim().length !== 6}
-                        className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-1.5"
-                      >
-                        {isVerifyingEmailOtp && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                        <span>Verifikasi Email</span>
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-3 pt-1 text-[11px]">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (otpCooldown > 0 || isSendingEmailOtp) return;
-                          setIsSendingEmailOtp(true);
-                          setEmailOtpError(null);
-                          try {
-                            const res = await requestEmailOtp(emailInput, 'verify_email');
-                            if (res.success) {
-                              setOtpCooldown(res.resendAfterSeconds || 60);
-                              setEmailOtpSuccess('Kode baru telah dikirimkan.');
-                              if (res.simulatedOtp) {
-                                setSimulatedOtpNotice(`[Mode Simulasi: Kode OTP Anda adalah ${res.simulatedOtp}]`);
-                              }
-                            } else {
-                              setEmailOtpError(res.error || 'Gagal mengirim ulang OTP.');
-                            }
-                          } catch (err: any) {
-                            setEmailOtpError(err.message || 'Gagal mengirim ulang OTP.');
-                          } finally {
-                            setIsSendingEmailOtp(false);
-                          }
-                        }}
-                        disabled={otpCooldown > 0 || isSendingEmailOtp}
-                        className="text-indigo-400 hover:text-indigo-300 font-semibold disabled:opacity-50"
-                      >
-                        {otpCooldown > 0 ? `Kirim Ulang Kode (${otpCooldown}s)` : 'Kirim Ulang Kode OTP'}
-                      </button>
-
-                      <span className="text-slate-600">•</span>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          updateSecuritySetting({
-                            recoveryEmail: {
-                              email: recoveryEmailConfig?.email || '',
-                              status: recoveryEmailConfig?.status === 'verified' ? 'verified' : 'unregistered',
-                            },
-                          });
-                          setShowChangeEmailForm(false);
-                          setEmailOtpError(null);
-                        }}
-                        className="text-slate-400 hover:text-slate-200"
-                      >
-                        Batal
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* State 3: Register or Change Email Form */}
-                {(emailStatus === 'unregistered' || showChangeEmailForm) && emailStatus !== 'pending' && (
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      const cleanEmail = emailInput.trim().toLowerCase();
-                      if (!cleanEmail || !cleanEmail.includes('@')) {
-                        setEmailOtpError('Masukkan alamat email yang valid.');
-                        return;
-                      }
-
-                      setIsSendingEmailOtp(true);
-                      setEmailOtpError(null);
-                      setEmailOtpSuccess(null);
-                      setSimulatedOtpNotice(null);
-
-                      try {
-                        const res = await requestEmailOtp(cleanEmail, 'verify_email');
-                        if (res.success) {
-                          const updatedEmailConfig: RecoveryEmailConfig = {
-                            email: cleanEmail,
-                            status: 'pending',
-                            updatedAt: new Date().toISOString(),
-                          };
-                          updateSecuritySetting({ recoveryEmail: updatedEmailConfig });
-                          setOtpCooldown(res.resendAfterSeconds || 60);
-                          setEmailOtpSuccess(`Kode verifikasi OTP dikirim ke ${cleanEmail}`);
-                          if (res.simulatedOtp) {
-                            setSimulatedOtpNotice(`[Mode Simulasi: Kode OTP Anda adalah ${res.simulatedOtp}]`);
-                          }
-                        } else {
-                          setEmailOtpError(res.error || 'Gagal mengirim kode verifikasi.');
-                        }
-                      } catch (err: any) {
-                        setEmailOtpError(err.message || 'Gagal mengirim kode verifikasi.');
-                      } finally {
-                        setIsSendingEmailOtp(false);
-                      }
-                    }}
-                    className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3"
-                  >
-                    <label className="text-xs font-semibold text-slate-200 block">
-                      {emailStatus === 'verified' ? 'Ganti Alamat Email Pemulihan' : 'Daftarkan Email Pemulihan'}
-                    </label>
-
-                    <div className="flex flex-col sm:flex-row gap-2.5">
-                      <input
-                        type="email"
-                        value={emailInput}
-                        onChange={(e) => setEmailInput(e.target.value)}
-                        placeholder="contoh: namaanda@gmail.com"
-                        className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-500"
-                      />
-
-                      <button
-                        type="submit"
-                        disabled={isSendingEmailOtp || !emailInput.trim()}
-                        className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-1.5 shrink-0"
-                      >
-                        {isSendingEmailOtp && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                        <Mail className="w-3.5 h-3.5" />
-                        <span>Kirim Kode Verifikasi</span>
-                      </button>
-
-                      {showChangeEmailForm && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowChangeEmailForm(false);
-                            setEmailOtpError(null);
-                          }}
-                          className="px-3 py-2 text-xs text-slate-400 hover:text-slate-200"
-                        >
-                          Batal
-                        </button>
-                      )}
-                    </div>
-                  </form>
-                )}
-              </div>
-
-              {/* ======================================================== */}
-              {/* SUBSECTION D: FOLDER TERPROTEKSI */}
+              {/* SUBSECTION C: DAFTAR FOLDER TERPROTEKSI */}
               {/* ======================================================== */}
               <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
@@ -1546,7 +1226,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <Folder className="w-4 h-4 text-indigo-400 shrink-0" />
                     <div>
                       <h4 className="text-xs font-bold text-slate-100 uppercase tracking-wider">
-                        D. Daftar Folder Terproteksi
+                        C. Daftar Folder Terproteksi
                       </h4>
                       <p className="text-[11px] text-slate-400">
                         Status proteksi kunci pada setiap folder aplikasi
