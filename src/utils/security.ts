@@ -221,12 +221,19 @@ export function isMasterRecoveryPinConfigured(securitySettings?: {
 
 /**
  * Check if App Vault Access Key is enabled & configured
+ * Note: If isGlobalAppLockEnabled is explicitly false, returns false (bypassing the lock)
  */
 export function isVaultAccessKeyConfigured(securitySettings?: {
+  isGlobalAppLockEnabled?: boolean;
   isVaultAccessKeyEnabled?: boolean;
   vaultAccessKeyHash?: string;
   vaultAccessKeySalt?: string;
 } | null): boolean {
+  // If global app lock toggle is explicitly turned OFF, bypass all app locking
+  if (securitySettings?.isGlobalAppLockEnabled === false) {
+    return false;
+  }
+
   return Boolean(
     securitySettings?.isVaultAccessKeyEnabled &&
       securitySettings?.vaultAccessKeyHash &&

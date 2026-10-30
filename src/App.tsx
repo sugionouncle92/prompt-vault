@@ -366,6 +366,11 @@ export default function App() {
 
   // Auto-Lock Inactivity Timer
   useEffect(() => {
+    // If Global App Lock is OFF, completely disable auto-lock inactivity timer
+    if (appSettings.security?.isGlobalAppLockEnabled === false) {
+      return;
+    }
+
     const autoLockDuration = appSettings.preferences?.autoLockDuration || 'refresh';
     if (autoLockDuration === 'refresh' || autoLockDuration === 'unload') {
       return;
@@ -404,7 +409,7 @@ export default function App() {
       clearTimeout(timer);
       events.forEach((evt) => window.removeEventListener(evt, resetTimer));
     };
-  }, [appSettings.preferences?.autoLockDuration, unlockedFolderIds.size, isVaultKeyRequired, isVaultUnlocked]);
+  }, [appSettings.preferences?.autoLockDuration, appSettings.security?.isGlobalAppLockEnabled, unlockedFolderIds.size, isVaultKeyRequired, isVaultUnlocked]);
 
   // 1. Initial connection & restore from Firebase Cloud Firestore
   useEffect(() => {

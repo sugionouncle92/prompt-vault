@@ -41,6 +41,7 @@ export function sanitizeFirestorePayload<T extends Record<string, any>>(obj: T):
 }
 
 export interface AppSecuritySettings {
+  isGlobalAppLockEnabled?: boolean; // Global toggle: true = active security/gate, false = bypass/no lock
   isVaultAccessKeyEnabled?: boolean;
   vaultAccessKeyHash?: string;
   vaultAccessKeySalt?: string;
@@ -150,6 +151,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     cardStyle: 'bordered',
   },
   security: {
+    isGlobalAppLockEnabled: true,
     isVaultAccessKeyEnabled: false,
     vaultAccessKeyHash: '',
     vaultAccessKeySalt: '',
