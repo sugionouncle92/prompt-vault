@@ -29,6 +29,9 @@ import {
   recordFailedAttempt,
   resetFailedAttempts,
   hashFolderKey,
+  hashMasterFolderPassword,
+  verifyMasterFolderPassword,
+  getEffectiveMasterFolderCredentials,
 } from '../utils/security';
 import {
   requestEmailOtp,
@@ -44,6 +47,7 @@ interface UnlockFolderModalProps {
   onResetLock?: (folderId: string) => Promise<void> | void;
   onSaveLockConfig?: (updatedFields: Partial<FolderItem>) => Promise<void> | void;
   onUpdateFolderKey?: (folderId: string, keyHash: string, keySalt: string) => Promise<void> | void;
+  onUpdateMasterFolderPassword?: (passwordHash: string, passwordSalt: string) => Promise<void> | void;
   onOpenSettings?: () => void;
 }
 
@@ -57,6 +61,7 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
   onResetLock,
   onSaveLockConfig,
   onUpdateFolderKey,
+  onUpdateMasterFolderPassword,
   onOpenSettings,
 }) => {
   const [mode, setMode] = useState<ModalMode>('standard');
@@ -148,11 +153,12 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
     e.preventDefault();
     if (!keyInput.trim() || isVerifying || lockoutRemaining > 0) return;
 
-    const hashToTest = folder.keyHash || securitySettings?.vaultAccessKeyHash;
-    const saltToTest = folder.keySalt || securitySettings?.vaultAccessKeySalt;
+    const creds = getEffectiveMasterFolderCredentials(securitySettings);
+    const hashToTest = creds.hash || folder.keyHash;
+    const saltToTest = creds.salt || folder.keySalt;
 
     if (!hashToTest || !saltToTest) {
-      setErrorMessage('Konfigurasi Access Key folder tidak ditemukan.');
+      setErrorMessage('Master Folder Password belum dikonfigurasi di aplikasi.');
       return;
     }
 
@@ -174,14 +180,14 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
             `Terlalu banyak percobaan salah (5x). Silakan tunggu ${lockoutStatus.lockoutSeconds} detik.`
           );
         } else {
-          setErrorMessage('Access Key salah. Silakan coba lagi atau gunakan pemulihan.');
+          setErrorMessage('Password salah. Silakan coba lagi atau gunakan pemulihan.');
         }
         setKeyInput('');
         inputRef.current?.focus();
       }
     } catch (err) {
       console.error('Key verification error:', err);
-      setErrorMessage('Terjadi kesalahan saat memverifikasi Access Key.');
+      setErrorMessage('Terjadi kesalahan saat memverifikasi Master Folder Password.');
     } finally {
       setIsVerifying(false);
     }
@@ -199,7 +205,7 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
     try {
       const res = await requestEmailOtp(
         recoveryEmailConfig.email,
-        'reset_folder_access_key',
+        'reset_master_password',
         folder.id
       );
 
@@ -241,7 +247,7 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
       const res = await verifyEmailOtp(
         recoveryEmailConfig.email,
         otpInput.trim(),
-        'reset_folder_access_key'
+        'reset_master_password'
       );
 
       if (res.success) {
@@ -316,12 +322,12 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
     }
 
     if (key.length < 4) {
-      setErrorMessage('Access Key baru minimal 4 karakter.');
+      setErrorMessage('Master Folder Password baru minimal 4 karakter.');
       return;
     }
 
     if (key !== confirm) {
-      setErrorMessage('Konfirmasi Access Key tidak cocok. Pastikan keduanya sama persis.');
+      setErrorMessage('Konfirmasi password tidak cocok. Pastikan keduanya sama persis.');
       return;
     }
 
@@ -329,15 +335,18 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
     setErrorMessage(null);
 
     try {
-      const { keyHash, keySalt } = await hashFolderKey(key);
+      const { masterPasswordHash, masterPasswordSalt } = await hashMasterFolderPassword(key);
 
+      if (onUpdateMasterFolderPassword) {
+        await onUpdateMasterFolderPassword(masterPasswordHash, masterPasswordSalt);
+      }
       if (onUpdateFolderKey) {
-        await onUpdateFolderKey(folder.id, keyHash, keySalt);
+        await onUpdateFolderKey(folder.id, masterPasswordHash, masterPasswordSalt);
       } else if (onSaveLockConfig) {
         await onSaveLockConfig({
           isLocked: true,
-          keyHash,
-          keySalt,
+          keyHash: masterPasswordHash,
+          keySalt: masterPasswordSalt,
           lockType: 'key',
         });
       }
@@ -347,7 +356,7 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Save new key error:', err);
-      setErrorMessage(err.message || 'Gagal menyimpan Access Key baru ke database.');
+      setErrorMessage(err.message || 'Gagal menyimpan Master Folder Password baru.');
     } finally {
       setIsSavingNewKey(false);
     }
@@ -445,7 +454,7 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-bold text-slate-200 truncate">{folder.name}</div>
-                <div className="text-[11px] text-slate-500">Folder Dilindungi Access Key</div>
+                <div className="text-[11px] text-slate-500">Folder Dilindungi Master Password</div>
               </div>
             </div>
 
@@ -453,7 +462,7 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
               <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                  Masukkan Access Key Folder
+                  Masukkan Master Folder Password
                 </span>
                 <button
                   type="button"
@@ -465,7 +474,7 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
                   id="forgot-key-btn"
                 >
                   <HelpCircle className="w-3 h-3" />
-                  <span>Lupa Kunci Akses?</span>
+                  <span>Lupa Password?</span>
                 </button>
               </label>
 
@@ -476,7 +485,7 @@ export const UnlockFolderModal: React.FC<UnlockFolderModalProps> = ({
                   type={showKey ? 'text' : 'password'}
                   value={keyInput}
                   onChange={(e) => setKeyInput(e.target.value)}
-                  placeholder="Masukkan Access Key folder..."
+                  placeholder="Masukkan master password folder..."
                   disabled={isLockedOut || isVerifying}
                   autoComplete="off"
                   className={`w-full bg-slate-950 border text-slate-100 text-sm rounded-xl pl-3.5 pr-11 py-3 outline-none transition-all font-mono ${

@@ -81,6 +81,79 @@ export async function verifyFolderKey(
 }
 
 /**
+ * Hash Master Folder Password with PBKDF2-SHA256
+ */
+export async function hashMasterFolderPassword(
+  password: string,
+  existingSaltHex?: string
+): Promise<{ masterPasswordHash: string; masterPasswordSalt: string }> {
+  const { keyHash, keySalt } = await hashFolderKey(password, existingSaltHex);
+  return { masterPasswordHash: keyHash, masterPasswordSalt: keySalt };
+}
+
+/**
+ * Verify Master Folder Password against stored hash and salt
+ */
+export async function verifyMasterFolderPassword(
+  inputPassword: string,
+  storedHash?: string,
+  storedSalt?: string
+): Promise<boolean> {
+  if (!inputPassword || !storedHash || !storedSalt) return false;
+  return verifyFolderKey(inputPassword, storedHash, storedSalt);
+}
+
+/**
+ * Check if Master Folder Password is configured
+ */
+export function isMasterFolderPasswordConfigured(securitySettings?: {
+  masterFolderPasswordHash?: string;
+  masterFolderPasswordSalt?: string;
+  isMasterFolderPasswordSet?: boolean;
+  vaultAccessKeyHash?: string;
+  vaultAccessKeySalt?: string;
+} | null): boolean {
+  if (
+    securitySettings?.isMasterFolderPasswordSet &&
+    securitySettings?.masterFolderPasswordHash &&
+    securitySettings?.masterFolderPasswordSalt
+  ) {
+    return true;
+  }
+  if (
+    securitySettings?.vaultAccessKeyHash &&
+    securitySettings?.vaultAccessKeySalt
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function getEffectiveMasterFolderCredentials(securitySettings?: {
+  masterFolderPasswordHash?: string;
+  masterFolderPasswordSalt?: string;
+  vaultAccessKeyHash?: string;
+  vaultAccessKeySalt?: string;
+} | null): {
+  hash?: string;
+  salt?: string;
+} {
+  if (securitySettings?.masterFolderPasswordHash && securitySettings?.masterFolderPasswordSalt) {
+    return {
+      hash: securitySettings.masterFolderPasswordHash,
+      salt: securitySettings.masterFolderPasswordSalt,
+    };
+  }
+  if (securitySettings?.vaultAccessKeyHash && securitySettings?.vaultAccessKeySalt) {
+    return {
+      hash: securitySettings.vaultAccessKeyHash,
+      salt: securitySettings.vaultAccessKeySalt,
+    };
+  }
+  return {};
+}
+
+/**
  * Alias for App Vault Access Key Hashing
  */
 export async function hashVaultAccessKey(

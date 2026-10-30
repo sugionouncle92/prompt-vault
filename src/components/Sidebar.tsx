@@ -15,6 +15,8 @@ import {
   FileText,
   MoreVertical,
   Download,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import {
   FilterState,
@@ -30,9 +32,13 @@ interface SidebarProps {
   folders: FolderItem[];
   filters: FilterState;
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
+  unlockedFolderIds?: Set<string>;
   onOpenNewFolderModal: () => void;
   onEditFolder: (folder: FolderItem) => void;
   onDeleteFolder: (folderId: string) => void;
+  onOpenUnlockModal?: (folder: FolderItem) => void;
+  onLockFolderNow?: (folderId: string) => void;
+  onToggleFolderProtection?: (folder: FolderItem, mode: 'enable' | 'disable') => void;
   isMobileSidebarOpen: boolean;
   setIsMobileSidebarOpen: (open: boolean) => void;
 }
@@ -42,9 +48,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   folders,
   filters,
   setFilters,
+  unlockedFolderIds = new Set(),
   onOpenNewFolderModal,
   onEditFolder,
   onDeleteFolder,
+  onOpenUnlockModal,
+  onLockFolderNow,
+  onToggleFolderProtection,
   isMobileSidebarOpen,
   setIsMobileSidebarOpen,
 }) => {
@@ -326,8 +336,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 FOLDER_COLORS.find((c) => c.value === folder.color) || FOLDER_COLORS[0];
               const isSelected = filters.folderId === folder.id;
               const countInFolder = prompts.filter((p) => p.folderId === folder.id).length;
+              const isFolderProtected = Boolean(folder.isLocked);
+              const isUnlockedInSession = unlockedFolderIds.has(folder.id);
 
               const handleFolderClick = () => {
+                if (isFolderProtected && !isUnlockedInSession) {
+                  if (onOpenUnlockModal) {
+                    onOpenUnlockModal(folder);
+                  }
+                  return;
+                }
                 setFilters((prev) => ({
                   ...prev,
                   folderId: folder.id,
@@ -350,13 +368,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className={`flex-1 flex items-center gap-2 truncate text-left transition-colors ${
                       isSelected ? 'text-white font-semibold' : 'text-slate-300 hover:text-slate-100'
                     }`}
-                    title={folder.name}
+                    title={
+                      isFolderProtected
+                        ? `${folder.name} (${isUnlockedInSession ? 'Terbuka di Sesi' : 'Terkunci'})`
+                        : folder.name
+                    }
                   >
-                    <Folder className={`w-4 h-4 ${isSelected ? 'text-white' : colorConfig.text} shrink-0`} />
+                    {isFolderProtected ? (
+                      isUnlockedInSession ? (
+                        <Unlock className="w-4 h-4 text-emerald-400 shrink-0" />
+                      ) : (
+                        <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                      )
+                    ) : (
+                      <Folder className={`w-4 h-4 ${isSelected ? 'text-white' : colorConfig.text} shrink-0`} />
+                    )}
                     <span className="truncate">{folder.name}</span>
                   </button>
 
                   <div className="flex items-center gap-1.5">
+                    {/* Protected Status Badge if Locked */}
+                    {isFolderProtected && !isUnlockedInSession && (
+                      <span
+                        className="p-1 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px]"
+                        title="Folder Terkunci (Perlu Password)"
+                      >
+                        <Lock className="w-2.5 h-2.5" />
+                      </span>
+                    )}
+
                     {/* Prompt Count Badge */}
                     <span
                       className={`text-[10px] px-1.5 py-0.5 rounded-md border transition-colors ${
@@ -396,8 +436,50 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           />
                           <div
                             onClick={(e) => e.stopPropagation()}
-                            className="absolute right-0 top-full mt-1 w-44 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl py-1.5 z-40 text-xs text-slate-200"
+                            className="absolute right-0 top-full mt-1 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl py-1.5 z-40 text-xs text-slate-200"
                           >
+                            {/* Protection Toggle Action */}
+                            {!isFolderProtected ? (
+                              <button
+                                onClick={() => {
+                                  setActiveFolderMenuId(null);
+                                  if (onToggleFolderProtection) onToggleFolderProtection(folder, 'enable');
+                                }}
+                                className="w-full text-left px-3 py-1.5 hover:bg-slate-700 flex items-center gap-2 text-amber-300"
+                              >
+                                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Aktifkan Kunci Folder</span>
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setActiveFolderMenuId(null);
+                                    if (onToggleFolderProtection) onToggleFolderProtection(folder, 'disable');
+                                  }}
+                                  className="w-full text-left px-3 py-1.5 hover:bg-slate-700 flex items-center gap-2 text-slate-300"
+                                >
+                                  <Unlock className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Nonaktifkan Kunci Folder</span>
+                                </button>
+
+                                {isUnlockedInSession && onLockFolderNow && (
+                                  <button
+                                    onClick={() => {
+                                      setActiveFolderMenuId(null);
+                                      onLockFolderNow(folder.id);
+                                    }}
+                                    className="w-full text-left px-3 py-1.5 hover:bg-slate-700 flex items-center gap-2 text-amber-300"
+                                  >
+                                    <Lock className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>Kunci Sesi Sekarang</span>
+                                  </button>
+                                )}
+                              </>
+                            )}
+
+                            <div className="my-1 border-t border-slate-700" />
+
                             {/* Rename / Edit */}
                             <button
                               onClick={() => {

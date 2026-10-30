@@ -55,6 +55,9 @@ export interface AppSecuritySettings {
   vaultAccessKeyHash?: string;
   vaultAccessKeySalt?: string;
   accessKeyHint?: string;
+  isMasterFolderPasswordSet?: boolean;
+  masterFolderPasswordHash?: string;
+  masterFolderPasswordSalt?: string;
   isMasterPinSet?: boolean;
   masterPinHash?: string;
   masterPinSalt?: string;

@@ -17,6 +17,8 @@ import { VariableFillerModal } from './components/VariableFillerModal';
 import { ExportImportModal } from './components/ExportImportModal';
 import { ImageLightboxModal } from './components/ImageLightboxModal';
 import { SettingsModal } from './components/SettingsModal';
+import { UnlockFolderModal } from './components/UnlockFolderModal';
+import { FolderLockToggleModal } from './components/FolderLockToggleModal';
 import { DeleteFolderModal } from './components/DeleteFolderModal';
 import { PWAUpdateToast } from './components/PWAUpdateToast';
 import appLogo from './assets/logo-192.png';
@@ -32,6 +34,7 @@ import { copyToClipboard, getStoredTags, saveTagsToStorage } from './utils/stora
 import {
   AppSettings,
   DEFAULT_APP_SETTINGS,
+  AppSecuritySettings,
   subscribeToSettings,
   subscribeToPrompts,
   subscribeToFolders,
@@ -66,6 +69,7 @@ import {
   Star,
   Image as ImageIcon,
   FileText,
+  Lock,
 } from 'lucide-react';
 
 export default function App() {
@@ -114,6 +118,14 @@ export default function App() {
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
 
   const [deletingFolder, setDeletingFolder] = useState<FolderItem | null>(null);
+
+  // Folder Lock & Protection State (Session-only in-memory unlock status)
+  const [unlockedFolderIds, setUnlockedFolderIds] = useState<Set<string>>(new Set());
+  const [unlockingFolder, setUnlockingFolder] = useState<FolderItem | null>(null);
+  const [toggleLockFolder, setToggleLockFolder] = useState<{
+    folder: FolderItem;
+    mode: 'enable' | 'disable';
+  } | null>(null);
 
   // Toast Notifications
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -228,6 +240,123 @@ export default function App() {
     }
     setAppSettings(newSettings);
     await saveSettingsToFirebase(newSettings);
+  };
+
+  // --- Folder Lock Protection Handlers ---
+  const handleUnlockFolderSuccess = (folderId: string) => {
+    setUnlockedFolderIds((prev) => new Set([...prev, folderId]));
+    handleFilterChange((prev) => ({
+      ...prev,
+      folderId,
+      onlyFavorites: false,
+    }));
+    showToast('Folder berhasil dibuka!');
+  };
+
+  const handleLockFolderNow = (folderId: string) => {
+    setUnlockedFolderIds((prev) => {
+      const next = new Set(prev);
+      next.delete(folderId);
+      return next;
+    });
+    if (filters.folderId === folderId) {
+      handleFilterChange((prev) => ({ ...prev, folderId: 'all' }));
+    }
+    showToast('Folder dikunci kembali dalam sesi.');
+  };
+
+  const handleLockAllFolders = () => {
+    setUnlockedFolderIds(new Set());
+    const cur = folders.find((f) => f.id === filters.folderId);
+    if (cur?.isLocked) {
+      handleFilterChange((prev) => ({ ...prev, folderId: 'all' }));
+    }
+    showToast('Semua folder terproteksi telah dikunci.');
+  };
+
+  const handleConfirmEnableFolderLock = async (folderId: string) => {
+    const target = folders.find((f) => f.id === folderId);
+    if (!target) return;
+    const updated: FolderItem = {
+      ...target,
+      isLocked: true,
+    };
+    await saveFolderToFirebase(updated);
+    setFolders((prev) => prev.map((f) => (f.id === folderId ? updated : f)));
+    showToast(`Perlindungan kunci untuk folder "${target.name}" diaktifkan!`);
+  };
+
+  const handleConfirmDisableFolderLock = async (folderId: string) => {
+    const target = folders.find((f) => f.id === folderId);
+    if (!target) return;
+    const updated: FolderItem = {
+      ...target,
+      isLocked: false,
+    };
+    await saveFolderToFirebase(updated);
+    setFolders((prev) => prev.map((f) => (f.id === folderId ? updated : f)));
+    setUnlockedFolderIds((prev) => {
+      const next = new Set(prev);
+      next.delete(folderId);
+      return next;
+    });
+    showToast(`Kunci folder "${target.name}" dinonaktifkan.`);
+  };
+
+  const handleCreateMasterPasswordAndEnable = async (
+    folderId: string,
+    passwordHash: string,
+    passwordSalt: string
+  ) => {
+    const updatedSecurity: AppSecuritySettings = {
+      ...(appSettings.security || {}),
+      isMasterFolderPasswordSet: true,
+      masterFolderPasswordHash: passwordHash,
+      masterFolderPasswordSalt: passwordSalt,
+      vaultAccessKeyHash: passwordHash,
+      vaultAccessKeySalt: passwordSalt,
+      updatedAt: new Date().toISOString(),
+    };
+    const updatedSettings: AppSettings = {
+      ...appSettings,
+      security: updatedSecurity,
+    };
+    setAppSettings(updatedSettings);
+    await saveSettingsToFirebase(updatedSettings);
+
+    const target = folders.find((f) => f.id === folderId);
+    if (target) {
+      const updatedFolder: FolderItem = {
+        ...target,
+        isLocked: true,
+      };
+      await saveFolderToFirebase(updatedFolder);
+      setFolders((prev) => prev.map((f) => (f.id === folderId ? updatedFolder : f)));
+    }
+    setUnlockedFolderIds((prev) => new Set([...prev, folderId]));
+    showToast('Master Folder Password dibuat & kunci folder diaktifkan!');
+  };
+
+  const handleUpdateMasterFolderPassword = async (
+    passwordHash: string,
+    passwordSalt: string
+  ) => {
+    const updatedSecurity: AppSecuritySettings = {
+      ...(appSettings.security || {}),
+      isMasterFolderPasswordSet: true,
+      masterFolderPasswordHash: passwordHash,
+      masterFolderPasswordSalt: passwordSalt,
+      vaultAccessKeyHash: passwordHash,
+      vaultAccessKeySalt: passwordSalt,
+      updatedAt: new Date().toISOString(),
+    };
+    const updatedSettings: AppSettings = {
+      ...appSettings,
+      security: updatedSecurity,
+    };
+    setAppSettings(updatedSettings);
+    await saveSettingsToFirebase(updatedSettings);
+    showToast('Master Folder Password berhasil diperbarui!');
   };
 
   // 1. Initial connection & restore from Firebase Cloud Firestore
@@ -349,9 +478,28 @@ export default function App() {
     });
   };
 
+  // Check if a prompt belongs to a currently locked folder
+  const isPromptFolderLocked = (prompt: PromptItem): boolean => {
+    if (!prompt.folderId) return false;
+    const folder = folders.find((f) => f.id === prompt.folderId);
+    if (!folder || !folder.isLocked) return false;
+    return !unlockedFolderIds.has(folder.id);
+  };
+
+  const selectedFolder = folders.find((f) => f.id === filters.folderId);
+  const isCurrentFolderLocked = Boolean(
+    selectedFolder?.isLocked && !unlockedFolderIds.has(selectedFolder.id)
+  );
+
   // Filter & Sort Calculations
   const filteredAndSortedPrompts = useMemo(() => {
-    let list = [...prompts];
+    // If user is currently focused on a locked folder that is not unlocked in session, return empty list
+    if (isCurrentFolderLocked) {
+      return [];
+    }
+
+    // Exclude any prompt that belongs to a locked folder
+    let list = prompts.filter((p) => !isPromptFolderLocked(p));
 
     // 1. Search Query
     if (filters.searchQuery.trim()) {
@@ -442,7 +590,7 @@ export default function App() {
     });
 
     return list;
-  }, [prompts, filters]);
+  }, [prompts, filters, folders, unlockedFolderIds, isCurrentFolderLocked]);
 
   // Determine if viewing a specific folder (hide folder badge on cards) vs Menu Utama (show folder badge)
   const isInsideSpecificFolder = Boolean(filters.folderId && filters.folderId !== 'all');
@@ -833,6 +981,10 @@ export default function App() {
           folders={folders}
           filters={filters}
           setFilters={handleFilterChange}
+          unlockedFolderIds={unlockedFolderIds}
+          onOpenUnlockModal={(folder) => setUnlockingFolder(folder)}
+          onLockFolderNow={handleLockFolderNow}
+          onToggleFolderProtection={(folder, mode) => setToggleLockFolder({ folder, mode })}
           onOpenNewFolderModal={() => {
             setEditingFolder(null);
             setIsFolderModalOpen(true);
@@ -906,7 +1058,35 @@ export default function App() {
           </div>
 
           {/* Prompts Display View Layout */}
-          {filteredAndSortedPrompts.length === 0 ? (
+          {isCurrentFolderLocked ? (
+            /* Locked Folder Screen */
+            <div className="bg-slate-900/60 border border-amber-500/30 rounded-3xl p-10 text-center space-y-4 max-w-md mx-auto my-12 shadow-xl shadow-amber-950/20 animate-fade-in">
+              <div className="w-16 h-16 rounded-3xl bg-amber-500/20 border border-amber-500/40 mx-auto flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/10">
+                <Lock className="w-8 h-8" />
+              </div>
+
+              <div className="space-y-1.5">
+                <h3 className="text-base font-bold text-slate-100">
+                  Folder &ldquo;{selectedFolder?.name}&rdquo; Terkunci
+                </h3>
+                <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+                  Folder ini diproteksi dengan Master Folder Password. Masukkan password untuk membuka akses ke seluruh prompt di dalamnya.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => selectedFolder && setUnlockingFolder(selectedFolder)}
+                  className="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-amber-600/30 transition-all flex items-center gap-2 mx-auto"
+                  id="unlock-current-folder-btn"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>Buka Kunci Folder Ini</span>
+                </button>
+              </div>
+            </div>
+          ) : filteredAndSortedPrompts.length === 0 ? (
             filters.onlyFavorites ? (
               /* Informative Empty State for Favorites */
               <div className="bg-slate-900/40 border border-amber-500/20 border-dashed rounded-3xl p-10 sm:p-12 text-center space-y-4 max-w-md mx-auto my-12 animate-fade-in shadow-xl shadow-amber-950/10">
@@ -1178,12 +1358,38 @@ export default function App() {
       {isSettingsModalOpen && (
         <SettingsModal
           settings={appSettings}
+          folders={folders}
+          unlockedFolderIds={unlockedFolderIds}
+          onLockAllFolders={handleLockAllFolders}
           onUpdateSettings={handleUpdateSettings}
           onClose={() => setIsSettingsModalOpen(false)}
           isFirebaseConnected={isFirebaseConnected}
           onRetryFirebase={() => {
             fetchSettingsFromFirebase().then((st) => setAppSettings(st));
           }}
+        />
+      )}
+
+      {unlockingFolder && (
+        <UnlockFolderModal
+          folder={unlockingFolder}
+          securitySettings={appSettings.security}
+          onClose={() => setUnlockingFolder(null)}
+          onUnlockSuccess={handleUnlockFolderSuccess}
+          onUpdateMasterFolderPassword={handleUpdateMasterFolderPassword}
+          onOpenSettings={() => setIsSettingsModalOpen(true)}
+        />
+      )}
+
+      {toggleLockFolder && (
+        <FolderLockToggleModal
+          folder={toggleLockFolder.folder}
+          mode={toggleLockFolder.mode}
+          securitySettings={appSettings.security}
+          onClose={() => setToggleLockFolder(null)}
+          onConfirmEnable={handleConfirmEnableFolderLock}
+          onConfirmDisable={handleConfirmDisableFolderLock}
+          onCreateMasterPasswordAndEnable={handleCreateMasterPasswordAndEnable}
         />
       )}
 

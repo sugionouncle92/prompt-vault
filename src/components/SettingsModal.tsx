@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Sliders,
@@ -24,13 +24,41 @@ import {
   Share2,
   PlusSquare,
   Zap,
+  Lock,
+  Unlock,
+  Shield,
+  ShieldCheck,
+  Mail,
+  KeyRound,
+  Loader2,
+  Info,
+  Clock,
+  Folder,
 } from 'lucide-react';
-import { AppSettings, saveSettingsToFirebase } from '../services/firebaseService';
+import { AppSettings, saveSettingsToFirebase, AppSecuritySettings, RecoveryEmailConfig } from '../services/firebaseService';
+import { FolderItem, FOLDER_COLORS } from '../types';
 import appLogo from '../assets/logo-192.png';
 import { usePWA } from '../hooks/usePWA';
+import {
+  hashMasterFolderPassword,
+  verifyMasterFolderPassword,
+  isMasterFolderPasswordConfigured,
+  hashMasterRecoveryPin,
+  verifyMasterRecoveryPin,
+  isMasterRecoveryPinConfigured,
+  getEffectiveMasterFolderCredentials,
+} from '../utils/security';
+import {
+  requestEmailOtp,
+  verifyEmailOtp,
+  maskEmail,
+} from '../utils/emailOtp';
 
 interface SettingsModalProps {
   settings: AppSettings;
+  folders?: FolderItem[];
+  unlockedFolderIds?: Set<string>;
+  onLockAllFolders?: () => void;
   onUpdateSettings: (newSettings: AppSettings) => void;
   onClose: () => void;
   isFirebaseConnected: boolean;
@@ -39,12 +67,15 @@ interface SettingsModalProps {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
+  folders = [],
+  unlockedFolderIds = new Set(),
+  onLockAllFolders,
   onUpdateSettings,
   onClose,
   isFirebaseConnected,
   onRetryFirebase,
 }) => {
-  const [activeTab, setActiveTab] = useState<'theme' | 'gallery' | 'ai' | 'upload' | 'preferences' | 'pwa'>('theme');
+  const [activeTab, setActiveTab] = useState<'theme' | 'gallery' | 'ai' | 'upload' | 'security' | 'preferences' | 'pwa'>('theme');
   const [accentColor, setAccentColor] = useState('#6366f1');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const {
@@ -60,6 +91,70 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   } = usePWA();
   const [pwaInstallMessage, setPwaInstallMessage] = useState<string | null>(null);
   const [isTestingPWADiag, setIsTestingPWADiag] = useState(false);
+
+  // --- Master Folder Password State ---
+  const isMasterPasswordSet = isMasterFolderPasswordConfigured(settings.security);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [oldPasswordInput, setOldPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+
+  // --- Master Recovery PIN State ---
+  const isPinSet = isMasterRecoveryPinConfigured(settings.security);
+  const [showPinForm, setShowPinForm] = useState(false);
+  const [oldPinInput, setOldPinInput] = useState('');
+  const [newPinInput, setNewPinInput] = useState('');
+  const [confirmPinInput, setConfirmPinInput] = useState('');
+  const [showOldPin, setShowOldPin] = useState(false);
+  const [showNewPin, setShowNewPin] = useState(false);
+  const [showConfirmPin, setShowConfirmPin] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinSuccess, setPinSuccess] = useState<string | null>(null);
+  const [isSavingPin, setIsSavingPin] = useState(false);
+
+  // --- Recovery Email State ---
+  const recoveryEmailConfig = settings.security?.recoveryEmail;
+  const emailStatus: 'unregistered' | 'pending' | 'verified' =
+    recoveryEmailConfig?.status || (recoveryEmailConfig?.email ? 'verified' : 'unregistered');
+  const [emailInput, setEmailInput] = useState(recoveryEmailConfig?.email || '');
+  const [showChangeEmailForm, setShowChangeEmailForm] = useState(false);
+  const [otpInput, setOtpInput] = useState('');
+  const [otpCooldown, setOtpCooldown] = useState(0);
+  const [isSendingEmailOtp, setIsSendingEmailOtp] = useState(false);
+  const [isVerifyingEmailOtp, setIsVerifyingEmailOtp] = useState(false);
+  const [emailOtpError, setEmailOtpError] = useState<string | null>(null);
+  const [emailOtpSuccess, setEmailOtpSuccess] = useState<string | null>(null);
+  const [simulatedOtpNotice, setSimulatedOtpNotice] = useState<string | null>(null);
+
+  // OTP cooldown timer
+  useEffect(() => {
+    if (otpCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setOtpCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [otpCooldown]);
+
+  // Helper to update security settings
+  const updateSecuritySetting = (patch: Partial<AppSecuritySettings>) => {
+    const updatedSecurity: AppSecuritySettings = {
+      ...(settings.security || {}),
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    };
+    const updatedSettings: AppSettings = {
+      ...settings,
+      security: updatedSecurity,
+    };
+    onUpdateSettings(updatedSettings);
+    triggerAutoSave(updatedSettings);
+  };
 
 
 
@@ -214,6 +309,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             >
               <UploadCloud className="w-4 h-4 shrink-0" />
               <span>Upload, Crop & Ekspor</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('security')}
+              className={`shrink-0 relative flex items-center gap-2 py-3 px-4 text-xs font-semibold rounded-t-xl transition-all whitespace-nowrap -mb-px border-b-2 ${
+                activeTab === 'security'
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+              id="settings-security-tab-btn"
+            >
+              <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Keamanan Folder</span>
             </button>
 
             <button
@@ -641,6 +750,884 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(e) => updateNestedSetting('preferences', 'printHeader', e.target.checked)}
                   className="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
                 />
+              </div>
+            </div>
+          )}
+
+          {/* TAB: KEAMANAN FOLDER & SISTEM PEMULIHAN */}
+          {activeTab === 'security' && (
+            <div className="space-y-6 animate-fade-in" id="settings-security-content">
+              {/* Info Header Banner */}
+              <div className="p-4 bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-slate-900 border border-amber-500/30 rounded-2xl flex items-start gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0 mt-0.5">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                    Folder Lock Protection &amp; Recovery System
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono">
+                      v2.1
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Aplikasi PromptVault bebas dibuka tanpa kunci global. Anda dapat melindungi folder tertentu secara individual menggunakan <strong>Satu Master Folder Password</strong> dengan 2 metode pemulihan darurat independen (Recovery PIN &amp; Email OTP).
+                  </p>
+                </div>
+              </div>
+
+              {/* ======================================================== */}
+              {/* SUBSECTION A: MASTER FOLDER PASSWORD */}
+              {/* ======================================================== */}
+              <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-amber-400 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-100 uppercase tracking-wider">
+                        A. Master Folder Password
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Kredensial tunggal untuk seluruh folder terproteksi
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-xs px-2.5 py-1 rounded-full border font-semibold flex items-center gap-1.5 ${
+                        isMasterPasswordSet
+                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                          : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                      }`}
+                    >
+                      {isMasterPasswordSet ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Aktif &amp; Terkonfigurasi</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          <span>Belum Dibuat</span>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Satu Master Folder Password ini berlaku untuk seluruh folder yang Anda pilih untuk dikunci. Password dienkripsi menggunakan hashing PBKDF2 SHA-256 dengan salt unik.
+                </p>
+
+                {passwordSuccess && (
+                  <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{passwordSuccess}</span>
+                  </div>
+                )}
+
+                {passwordError && (
+                  <div className="p-3 bg-rose-950/40 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>{passwordError}</span>
+                  </div>
+                )}
+
+                {/* Form or Trigger Button */}
+                {!showPasswordForm ? (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPasswordForm(true);
+                        setPasswordError(null);
+                        setPasswordSuccess(null);
+                        setOldPasswordInput('');
+                        setNewPasswordInput('');
+                        setConfirmPasswordInput('');
+                      }}
+                      className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 ${
+                        isMasterPasswordSet
+                          ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                          : 'bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-600/30'
+                      }`}
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>{isMasterPasswordSet ? 'Ganti Master Folder Password' : 'Buat Master Folder Password'}</span>
+                    </button>
+                  </div>
+                ) : (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      setPasswordError(null);
+                      setPasswordSuccess(null);
+
+                      if (isMasterPasswordSet) {
+                        const creds = getEffectiveMasterFolderCredentials(settings.security);
+                        if (!oldPasswordInput.trim()) {
+                          setPasswordError('Masukkan password saat ini untuk verifikasi.');
+                          return;
+                        }
+                        const isOldValid = await verifyMasterFolderPassword(
+                          oldPasswordInput.trim(),
+                          creds.hash,
+                          creds.salt
+                        );
+                        if (!isOldValid) {
+                          setPasswordError('Password lama salah. Akses perubahan ditolak.');
+                          return;
+                        }
+                      }
+
+                      const np = newPasswordInput.trim();
+                      const cp = confirmPasswordInput.trim();
+
+                      if (!np) {
+                        setPasswordError('Password baru tidak boleh kosong.');
+                        return;
+                      }
+                      if (np.length < 4) {
+                        setPasswordError('Password baru minimal 4 karakter.');
+                        return;
+                      }
+                      if (np !== cp) {
+                        setPasswordError('Konfirmasi password tidak cocok.');
+                        return;
+                      }
+
+                      setIsSavingPassword(true);
+                      try {
+                        const { masterPasswordHash, masterPasswordSalt } =
+                          await hashMasterFolderPassword(np);
+                        updateSecuritySetting({
+                          isMasterFolderPasswordSet: true,
+                          masterFolderPasswordHash: masterPasswordHash,
+                          masterFolderPasswordSalt: masterPasswordSalt,
+                          vaultAccessKeyHash: masterPasswordHash,
+                          vaultAccessKeySalt: masterPasswordSalt,
+                        });
+                        setPasswordSuccess('Master Folder Password berhasil diperbarui!');
+                        setShowPasswordForm(false);
+                      } catch (err: any) {
+                        setPasswordError(err.message || 'Gagal menyimpan Master Folder Password.');
+                      } finally {
+                        setIsSavingPassword(false);
+                      }
+                    }}
+                    className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3.5"
+                  >
+                    <div className="font-semibold text-xs text-slate-200">
+                      {isMasterPasswordSet ? 'Ganti Master Folder Password' : 'Buat Master Folder Password Baru'}
+                    </div>
+
+                    {isMasterPasswordSet && (
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300 block">
+                          Password Lama
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showOldPassword ? 'text' : 'password'}
+                            value={oldPasswordInput}
+                            onChange={(e) => setOldPasswordInput(e.target.value)}
+                            placeholder="Masukkan password saat ini..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500 pr-9 font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowOldPassword(!showOldPassword)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                          >
+                            {showOldPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300 block">
+                          Password Baru (Min. 4 Karakter)
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showNewPassword ? 'text' : 'password'}
+                            value={newPasswordInput}
+                            onChange={(e) => setNewPasswordInput(e.target.value)}
+                            placeholder="Password baru..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500 pr-9 font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowNewPassword(!showNewPassword)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                          >
+                            {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300 block">
+                          Konfirmasi Password Baru
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            value={confirmPasswordInput}
+                            onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                            placeholder="Konfirmasi password baru..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500 pr-9 font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                          >
+                            {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswordForm(false)}
+                        className="px-3.5 py-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingPassword}
+                        className="px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                      >
+                        {isSavingPassword && <Loader2 className="w-3 h-3 animate-spin" />}
+                        <span>Simpan Password</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+
+              {/* ======================================================== */}
+              {/* SUBSECTION B: MASTER RECOVERY PIN */}
+              {/* ======================================================== */}
+              <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-100 uppercase tracking-wider">
+                        B. Master Recovery PIN
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Metode pemulihan pertama jika lupa password folder
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-xs px-2.5 py-1 rounded-full border font-semibold flex items-center gap-1.5 ${
+                        isPinSet
+                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                          : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                      }`}
+                    >
+                      {isPinSet ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Terkonfigurasi (PIN 6 Digit)</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          <span>Belum Diatur</span>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  PIN darurat 6 digit numerik untuk memulihkan akses dan membuat Master Folder Password baru. PIN tidak dihapus setelah digunakan.
+                </p>
+
+                {pinSuccess && (
+                  <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{pinSuccess}</span>
+                  </div>
+                )}
+
+                {pinError && (
+                  <div className="p-3 bg-rose-950/40 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>{pinError}</span>
+                  </div>
+                )}
+
+                {!showPinForm ? (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPinForm(true);
+                        setPinError(null);
+                        setPinSuccess(null);
+                        setOldPinInput('');
+                        setNewPinInput('');
+                        setConfirmPinInput('');
+                      }}
+                      className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 ${
+                        isPinSet
+                          ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30'
+                      }`}
+                    >
+                      <Shield className="w-3.5 h-3.5" />
+                      <span>{isPinSet ? 'Ganti Recovery PIN' : 'Atur Recovery PIN (6 Digit)'}</span>
+                    </button>
+                  </div>
+                ) : (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      setPinError(null);
+                      setPinSuccess(null);
+
+                      if (isPinSet) {
+                        if (!oldPinInput.trim()) {
+                          setPinError('Masukkan PIN saat ini untuk verifikasi.');
+                          return;
+                        }
+                        const isOldValid = await verifyMasterRecoveryPin(
+                          oldPinInput.trim(),
+                          settings.security?.masterPinHash,
+                          settings.security?.masterPinSalt
+                        );
+                        if (!isOldValid) {
+                          setPinError('PIN lama salah. Akses perubahan ditolak.');
+                          return;
+                        }
+                      }
+
+                      const np = newPinInput.trim();
+                      const cp = confirmPinInput.trim();
+
+                      if (!np || !/^\d{6}$/.test(np)) {
+                        setPinError('PIN harus tepat 6 digit angka numerik.');
+                        return;
+                      }
+                      if (np !== cp) {
+                        setPinError('Konfirmasi PIN tidak cocok.');
+                        return;
+                      }
+
+                      setIsSavingPin(true);
+                      try {
+                        const { masterPinHash, masterPinSalt } = await hashMasterRecoveryPin(np);
+                        updateSecuritySetting({
+                          isMasterPinSet: true,
+                          masterPinHash,
+                          masterPinSalt,
+                        });
+                        setPinSuccess('Master Recovery PIN berhasil disimpan!');
+                        setShowPinForm(false);
+                      } catch (err: any) {
+                        setPinError(err.message || 'Gagal menyimpan Recovery PIN.');
+                      } finally {
+                        setIsSavingPin(false);
+                      }
+                    }}
+                    className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3.5"
+                  >
+                    <div className="font-semibold text-xs text-slate-200">
+                      {isPinSet ? 'Ganti Master Recovery PIN' : 'Atur Master Recovery PIN Baru'}
+                    </div>
+
+                    {isPinSet && (
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300 block">
+                          PIN Saat Ini (6 Digit)
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showOldPin ? 'text' : 'password'}
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={oldPinInput}
+                            onChange={(e) => setOldPinInput(e.target.value.replace(/\D/g, ''))}
+                            placeholder="6 digit PIN lama..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-emerald-500 pr-9 font-mono tracking-widest"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowOldPin(!showOldPin)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                          >
+                            {showOldPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300 block">
+                          PIN Baru (6 Digit Angka)
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showNewPin ? 'text' : 'password'}
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={newPinInput}
+                            onChange={(e) => setNewPinInput(e.target.value.replace(/\D/g, ''))}
+                            placeholder="6 digit angka..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-emerald-500 pr-9 font-mono tracking-widest"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowNewPin(!showNewPin)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                          >
+                            {showNewPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300 block">
+                          Konfirmasi PIN Baru
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showConfirmPin ? 'text' : 'password'}
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={confirmPinInput}
+                            onChange={(e) => setConfirmPinInput(e.target.value.replace(/\D/g, ''))}
+                            placeholder="Ulangi 6 digit..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-emerald-500 pr-9 font-mono tracking-widest"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPin(!showConfirmPin)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                          >
+                            {showConfirmPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowPinForm(false)}
+                        className="px-3.5 py-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingPin}
+                        className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                      >
+                        {isSavingPin && <Loader2 className="w-3 h-3 animate-spin" />}
+                        <span>Simpan Recovery PIN</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+
+              {/* ======================================================== */}
+              {/* SUBSECTION C: EMAIL PEMULIHAN */}
+              {/* ======================================================== */}
+              <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-indigo-400 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-100 uppercase tracking-wider">
+                        C. Email Pemulihan (Email OTP)
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Metode pemulihan alternatif via kode OTP 6 digit
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-xs px-2.5 py-1 rounded-full border font-semibold flex items-center gap-1.5 ${
+                        emailStatus === 'verified'
+                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                          : emailStatus === 'pending'
+                          ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                          : 'bg-slate-800 border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      {emailStatus === 'verified' && (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>TERVERIFIKASI</span>
+                        </>
+                      )}
+                      {emailStatus === 'pending' && (
+                        <>
+                          <Clock className="w-3.5 h-3.5 animate-pulse" />
+                          <span>MENUNGGU VERIFIKASI</span>
+                        </>
+                      )}
+                      {emailStatus === 'unregistered' && <span>BELUM TERDAFTAR</span>}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Email pemulihan digunakan untuk mengirim kode OTP 6 digit saat Anda lupa Master Folder Password. Kode OTP berlaku 5 menit dengan batas percobaan maksimal 5 kali.
+                </p>
+
+                {simulatedOtpNotice && (
+                  <div className="p-3 bg-amber-500/15 border border-amber-500/30 rounded-xl text-xs text-amber-200 font-mono">
+                    {simulatedOtpNotice}
+                  </div>
+                )}
+
+                {emailOtpSuccess && (
+                  <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{emailOtpSuccess}</span>
+                  </div>
+                )}
+
+                {emailOtpError && (
+                  <div className="p-3 bg-rose-950/40 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>{emailOtpError}</span>
+                  </div>
+                )}
+
+                {/* State 1: Verified Email Display */}
+                {emailStatus === 'verified' && !showChangeEmailForm && (
+                  <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <div className="text-[11px] text-slate-400 font-medium">Alamat Email Terdaftar:</div>
+                      <div className="text-sm font-bold text-slate-100 font-mono">
+                        {maskEmail(recoveryEmailConfig?.email || '')}
+                      </div>
+                      {recoveryEmailConfig?.verifiedAt && (
+                        <div className="text-[10px] text-emerald-400">
+                          Diverifikasi pada: {new Date(recoveryEmailConfig.verifiedAt).toLocaleDateString('id-ID')}
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowChangeEmailForm(true);
+                        setEmailOtpError(null);
+                        setEmailOtpSuccess(null);
+                        setEmailInput('');
+                      }}
+                      className="px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors"
+                    >
+                      Ganti Alamat Email
+                    </button>
+                  </div>
+                )}
+
+                {/* State 2: Pending OTP Verification */}
+                {emailStatus === 'pending' && (
+                  <div className="p-4 bg-slate-900 border border-amber-500/30 rounded-xl space-y-3.5">
+                    <div className="space-y-1">
+                      <div className="text-xs font-bold text-amber-300">
+                        Kode verifikasi telah dikirim ke: <span className="font-mono">{emailInput}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Masukkan 6 digit kode OTP yang kami kirimkan untuk memverifikasi kepemilikan email.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2.5">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={otpInput}
+                        onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder="6 Digit OTP..."
+                        className="bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono tracking-widest max-w-xs"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!otpInput.trim() || isVerifyingEmailOtp) return;
+                          setIsVerifyingEmailOtp(true);
+                          setEmailOtpError(null);
+                          setEmailOtpSuccess(null);
+                          try {
+                            const res = await verifyEmailOtp(emailInput, otpInput.trim(), 'verify_email');
+                            if (res.success) {
+                              const updatedEmailConfig: RecoveryEmailConfig = {
+                                email: emailInput.trim().toLowerCase(),
+                                status: 'verified',
+                                verifiedAt: new Date().toISOString(),
+                                updatedAt: new Date().toISOString(),
+                              };
+                              updateSecuritySetting({ recoveryEmail: updatedEmailConfig });
+                              setEmailOtpSuccess('Email pemulihan berhasil diverifikasi!');
+                              setShowChangeEmailForm(false);
+                              setOtpInput('');
+                            } else {
+                              setEmailOtpError(res.error || 'Kode OTP tidak valid.');
+                            }
+                          } catch (err: any) {
+                            setEmailOtpError(err.message || 'Gagal memverifikasi OTP.');
+                          } finally {
+                            setIsVerifyingEmailOtp(false);
+                          }
+                        }}
+                        disabled={isVerifyingEmailOtp || otpInput.trim().length !== 6}
+                        className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                      >
+                        {isVerifyingEmailOtp && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                        <span>Verifikasi Email</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-1 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (otpCooldown > 0 || isSendingEmailOtp) return;
+                          setIsSendingEmailOtp(true);
+                          setEmailOtpError(null);
+                          try {
+                            const res = await requestEmailOtp(emailInput, 'verify_email');
+                            if (res.success) {
+                              setOtpCooldown(res.resendAfterSeconds || 60);
+                              setEmailOtpSuccess('Kode baru telah dikirimkan.');
+                              if (res.simulatedOtp) {
+                                setSimulatedOtpNotice(`[Mode Simulasi: Kode OTP Anda adalah ${res.simulatedOtp}]`);
+                              }
+                            } else {
+                              setEmailOtpError(res.error || 'Gagal mengirim ulang OTP.');
+                            }
+                          } catch (err: any) {
+                            setEmailOtpError(err.message || 'Gagal mengirim ulang OTP.');
+                          } finally {
+                            setIsSendingEmailOtp(false);
+                          }
+                        }}
+                        disabled={otpCooldown > 0 || isSendingEmailOtp}
+                        className="text-indigo-400 hover:text-indigo-300 font-semibold disabled:opacity-50"
+                      >
+                        {otpCooldown > 0 ? `Kirim Ulang Kode (${otpCooldown}s)` : 'Kirim Ulang Kode OTP'}
+                      </button>
+
+                      <span className="text-slate-600">•</span>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateSecuritySetting({
+                            recoveryEmail: {
+                              email: recoveryEmailConfig?.email || '',
+                              status: recoveryEmailConfig?.status === 'verified' ? 'verified' : 'unregistered',
+                            },
+                          });
+                          setShowChangeEmailForm(false);
+                          setEmailOtpError(null);
+                        }}
+                        className="text-slate-400 hover:text-slate-200"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* State 3: Register or Change Email Form */}
+                {(emailStatus === 'unregistered' || showChangeEmailForm) && emailStatus !== 'pending' && (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const cleanEmail = emailInput.trim().toLowerCase();
+                      if (!cleanEmail || !cleanEmail.includes('@')) {
+                        setEmailOtpError('Masukkan alamat email yang valid.');
+                        return;
+                      }
+
+                      setIsSendingEmailOtp(true);
+                      setEmailOtpError(null);
+                      setEmailOtpSuccess(null);
+                      setSimulatedOtpNotice(null);
+
+                      try {
+                        const res = await requestEmailOtp(cleanEmail, 'verify_email');
+                        if (res.success) {
+                          const updatedEmailConfig: RecoveryEmailConfig = {
+                            email: cleanEmail,
+                            status: 'pending',
+                            updatedAt: new Date().toISOString(),
+                          };
+                          updateSecuritySetting({ recoveryEmail: updatedEmailConfig });
+                          setOtpCooldown(res.resendAfterSeconds || 60);
+                          setEmailOtpSuccess(`Kode verifikasi OTP dikirim ke ${cleanEmail}`);
+                          if (res.simulatedOtp) {
+                            setSimulatedOtpNotice(`[Mode Simulasi: Kode OTP Anda adalah ${res.simulatedOtp}]`);
+                          }
+                        } else {
+                          setEmailOtpError(res.error || 'Gagal mengirim kode verifikasi.');
+                        }
+                      } catch (err: any) {
+                        setEmailOtpError(err.message || 'Gagal mengirim kode verifikasi.');
+                      } finally {
+                        setIsSendingEmailOtp(false);
+                      }
+                    }}
+                    className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3"
+                  >
+                    <label className="text-xs font-semibold text-slate-200 block">
+                      {emailStatus === 'verified' ? 'Ganti Alamat Email Pemulihan' : 'Daftarkan Email Pemulihan'}
+                    </label>
+
+                    <div className="flex flex-col sm:flex-row gap-2.5">
+                      <input
+                        type="email"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        placeholder="contoh: namaanda@gmail.com"
+                        className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-500"
+                      />
+
+                      <button
+                        type="submit"
+                        disabled={isSendingEmailOtp || !emailInput.trim()}
+                        className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-1.5 shrink-0"
+                      >
+                        {isSendingEmailOtp && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>Kirim Kode Verifikasi</span>
+                      </button>
+
+                      {showChangeEmailForm && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowChangeEmailForm(false);
+                            setEmailOtpError(null);
+                          }}
+                          className="px-3 py-2 text-xs text-slate-400 hover:text-slate-200"
+                        >
+                          Batal
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                )}
+              </div>
+
+              {/* ======================================================== */}
+              {/* SUBSECTION D: FOLDER TERPROTEKSI */}
+              {/* ======================================================== */}
+              <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Folder className="w-4 h-4 text-indigo-400 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-100 uppercase tracking-wider">
+                        D. Daftar Folder Terproteksi
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Status proteksi kunci pada setiap folder aplikasi
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-semibold">
+                      {folders.filter((f) => f.isLocked).length} dari {folders.length} Folder Dilindungi
+                    </span>
+
+                    {folders.some((f) => f.isLocked && unlockedFolderIds.has(f.id)) && onLockAllFolders && (
+                      <button
+                        type="button"
+                        onClick={onLockAllFolders}
+                        className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
+                      >
+                        <Lock className="w-3 h-3" />
+                        <span>Kunci Semua Folder Sesi</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {folders.length === 0 ? (
+                    <div className="text-xs text-slate-500 italic py-2">Belum ada folder yang dibuat.</div>
+                  ) : (
+                    folders.map((f) => {
+                      const isProtected = Boolean(f.isLocked);
+                      const isUnlocked = unlockedFolderIds.has(f.id);
+                      const color = FOLDER_COLORS.find((c) => c.value === f.color) || FOLDER_COLORS[0];
+
+                      return (
+                        <div
+                          key={f.id}
+                          className="p-3 bg-slate-900 border border-slate-800/80 rounded-xl flex items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-7 h-7 rounded-lg ${color.bg} ${color.text} flex items-center justify-center shrink-0`}>
+                              {isProtected ? (
+                                isUnlocked ? <Unlock className="w-3.5 h-3.5 text-emerald-300" /> : <Lock className="w-3.5 h-3.5 text-amber-300" />
+                              ) : (
+                                <Folder className="w-3.5 h-3.5" />
+                              )}
+                            </div>
+                            <span className="font-semibold text-slate-200 truncate">{f.name}</span>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {isProtected ? (
+                              isUnlocked ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-medium flex items-center gap-1">
+                                  <Unlock className="w-3 h-3" />
+                                  <span>Terbuka di Sesi</span>
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 border border-amber-500/30 text-amber-300 font-medium flex items-center gap-1">
+                                  <Lock className="w-3 h-3" />
+                                  <span>Terkunci</span>
+                                </span>
+                              )
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-400 border border-slate-700">
+                                Bebas Akses
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="p-3 bg-slate-900/60 border border-slate-800/60 rounded-xl text-[11px] text-slate-400 flex items-center gap-2">
+                  <Info className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <span>
+                    Untuk mengaktifkan atau menonaktifkan kunci pada folder individual, gunakan tombol menu tiga titik (⋮) di samping nama folder pada sidebar.
+                  </span>
+                </div>
               </div>
             </div>
           )}

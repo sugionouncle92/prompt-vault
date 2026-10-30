@@ -12,6 +12,8 @@ import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { hashFolderKey, verifyFolderKey } from './security';
 
+export type OtpPurpose = 'verify_email' | 'reset_master_password' | 'reset_folder_access_key';
+
 export interface OtpRecord {
   email: string;
   otpHash: string;
@@ -20,7 +22,7 @@ export interface OtpRecord {
   maxAttempts: number;
   expiresAt: number; // timestamp ms
   createdAt: number; // timestamp ms
-  purpose: 'verify_email' | 'reset_folder_access_key';
+  purpose: OtpPurpose;
   targetFolderId?: string;
 }
 
@@ -59,7 +61,7 @@ export function maskEmail(email: string): string {
  */
 export async function requestEmailOtp(
   email: string,
-  purpose: 'verify_email' | 'reset_folder_access_key',
+  purpose: OtpPurpose,
   targetFolderId?: string
 ): Promise<{ success: boolean; resendAfterSeconds: number; simulatedOtp?: string; error?: string }> {
   try {
@@ -142,7 +144,7 @@ export async function requestEmailOtp(
 export async function verifyEmailOtp(
   email: string,
   inputOtp: string,
-  expectedPurpose: 'verify_email' | 'reset_folder_access_key'
+  expectedPurpose: OtpPurpose
 ): Promise<{ success: boolean; error?: string; attemptsLeft?: number }> {
   try {
     const cleanEmail = email.trim().toLowerCase();
