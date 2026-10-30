@@ -1161,25 +1161,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`text-xs px-2.5 py-1 rounded-full border font-semibold flex items-center gap-1.5 ${
-                        isPinSet
-                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                          : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-                      }`}
-                    >
-                      {isPinSet ? (
-                        <>
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Terkonfigurasi (PIN 6 Digit)</span>
-                        </>
-                      ) : (
-                        <>
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          <span>Belum Diatur</span>
-                        </>
-                      )}
-                    </span>
+                    {isVerifyingSecurityConfig ? (
+                      <span className="text-xs px-2.5 py-1 rounded-full border border-slate-700 bg-slate-800/80 text-slate-400 font-semibold flex items-center gap-1.5">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                        <span>Memverifikasi...</span>
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-xs px-2.5 py-1 rounded-full border font-semibold flex items-center gap-1.5 ${
+                          isPinSet
+                            ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                            : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                        }`}
+                      >
+                        {isPinSet ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Terkonfigurasi (PIN 6 Digit)</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span>Belum Dikonfigurasi</span>
+                          </>
+                        )}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1201,50 +1208,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 )}
 
-                {!showPinForm ? (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPinForm(true);
-                        setPinError(null);
-                        setPinSuccess(null);
-                        setOldPinInput('');
-                        setNewPinInput('');
-                        setConfirmPinInput('');
-                      }}
-                      className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 ${
-                        isPinSet
-                          ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30'
-                      }`}
-                    >
-                      <Shield className="w-3.5 h-3.5" />
-                      <span>{isPinSet ? 'Ganti Recovery PIN' : 'Atur Recovery PIN (6 Digit)'}</span>
-                    </button>
+                {/* Status verification loading */}
+                {isVerifyingSecurityConfig ? (
+                  <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl flex items-center gap-3">
+                    <Loader2 className="w-4 h-4 text-emerald-400 animate-spin shrink-0" />
+                    <span className="text-xs text-slate-300">
+                      Memverifikasi status konfigurasi Master Recovery PIN dari server...
+                    </span>
                   </div>
-                ) : (
+                ) : !isPinSet ? (
+                  /* =================================================== */
+                  /* KONDISI 1: BELUM TERKONFIGURASI (BUAT PERTAMA KALI) */
+                  /* =================================================== */
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
                       setPinError(null);
                       setPinSuccess(null);
-
-                      if (isPinSet) {
-                        if (!oldPinInput.trim()) {
-                          setPinError('Masukkan PIN saat ini untuk verifikasi.');
-                          return;
-                        }
-                        const isOldValid = await verifyMasterRecoveryPin(
-                          oldPinInput.trim(),
-                          settings.security?.masterPinHash,
-                          settings.security?.masterPinSalt
-                        );
-                        if (!isOldValid) {
-                          setPinError('PIN lama salah. Akses perubahan ditolak.');
-                          return;
-                        }
-                      }
 
                       const np = newPinInput.trim();
                       const cp = confirmPinInput.trim();
@@ -1261,12 +1241,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       setIsSavingPin(true);
                       try {
                         const { masterPinHash, masterPinSalt } = await hashMasterRecoveryPin(np);
-                        updateSecuritySetting({
+                        const newPinSecurity: Partial<AppSecuritySettings> = {
                           isMasterPinSet: true,
                           masterPinHash,
                           masterPinSalt,
-                        });
-                        setPinSuccess('Master Recovery PIN berhasil disimpan!');
+                        };
+                        updateSecuritySetting(newPinSecurity);
+                        setPinSuccess('Master Recovery PIN pertama kali berhasil dibuat dan dikonfigurasi!');
+                        setNewPinInput('');
+                        setConfirmPinInput('');
                         setShowPinForm(false);
                       } catch (err: any) {
                         setPinError(err.message || 'Gagal menyimpan Recovery PIN.');
@@ -1274,37 +1257,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         setIsSavingPin(false);
                       }
                     }}
-                    className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3.5"
+                    className="p-4 bg-slate-900 border border-emerald-500/30 rounded-xl space-y-3.5"
                   >
-                    <div className="font-semibold text-xs text-slate-200">
-                      {isPinSet ? 'Ganti Master Recovery PIN' : 'Atur Master Recovery PIN Baru'}
+                    <div className="flex items-center gap-2 font-semibold text-xs text-emerald-300">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Atur Master Recovery PIN Baru (Pertama Kali)</span>
                     </div>
-
-                    {isPinSet && (
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-semibold text-slate-300 block">
-                          PIN Saat Ini (6 Digit)
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showOldPin ? 'text' : 'password'}
-                            inputMode="numeric"
-                            maxLength={6}
-                            value={oldPinInput}
-                            onChange={(e) => setOldPinInput(e.target.value.replace(/\D/g, ''))}
-                            placeholder="6 digit PIN lama..."
-                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-emerald-500 pr-9 font-mono tracking-widest"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowOldPin(!showOldPin)}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-                          >
-                            {showOldPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      </div>
-                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
@@ -1358,22 +1316,189 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     <div className="flex items-center justify-end gap-2 pt-1">
                       <button
-                        type="button"
-                        onClick={() => setShowPinForm(false)}
-                        className="px-3.5 py-1.5 text-xs text-slate-400 hover:text-white transition-colors"
-                      >
-                        Batal
-                      </button>
-                      <button
                         type="submit"
-                        disabled={isSavingPin}
-                        className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                        disabled={isSavingPin || newPinInput.trim().length !== 6 || confirmPinInput.trim().length !== 6}
+                        className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-xl shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-1.5"
                       >
                         {isSavingPin && <Loader2 className="w-3 h-3 animate-spin" />}
                         <span>Simpan Recovery PIN</span>
                       </button>
                     </div>
                   </form>
+                ) : (
+                  /* =================================================== */
+                  /* KONDISI 2: SUDAH TERKONFIGURASI (GANTI PIN)         */
+                  /* =================================================== */
+                  !showPinForm ? (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPinForm(true);
+                          setPinError(null);
+                          setPinSuccess(null);
+                          setOldPinInput('');
+                          setNewPinInput('');
+                          setConfirmPinInput('');
+                        }}
+                        className="px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                      >
+                        <Shield className="w-3.5 h-3.5" />
+                        <span>Ganti Recovery PIN</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        setPinError(null);
+                        setPinSuccess(null);
+
+                        if (!oldPinInput.trim()) {
+                          setPinError('Masukkan PIN saat ini untuk verifikasi.');
+                          return;
+                        }
+                        const isOldValid = await verifyMasterRecoveryPin(
+                          oldPinInput.trim(),
+                          activeSecurity?.masterPinHash,
+                          activeSecurity?.masterPinSalt
+                        );
+                        if (!isOldValid) {
+                          setPinError('PIN lama salah. Akses perubahan ditolak.');
+                          return;
+                        }
+
+                        const np = newPinInput.trim();
+                        const cp = confirmPinInput.trim();
+
+                        if (!np || !/^\d{6}$/.test(np)) {
+                          setPinError('PIN harus tepat 6 digit angka numerik.');
+                          return;
+                        }
+                        if (np !== cp) {
+                          setPinError('Konfirmasi PIN tidak cocok.');
+                          return;
+                        }
+
+                        setIsSavingPin(true);
+                        try {
+                          const { masterPinHash, masterPinSalt } = await hashMasterRecoveryPin(np);
+                          const updatedSecurity: Partial<AppSecuritySettings> = {
+                            isMasterPinSet: true,
+                            masterPinHash,
+                            masterPinSalt,
+                          };
+                          updateSecuritySetting(updatedSecurity);
+                          setPinSuccess('Master Recovery PIN berhasil diperbarui!');
+                          setShowPinForm(false);
+                          setOldPinInput('');
+                          setNewPinInput('');
+                          setConfirmPinInput('');
+                        } catch (err: any) {
+                          setPinError(err.message || 'Gagal menyimpan Recovery PIN.');
+                        } finally {
+                          setIsSavingPin(false);
+                        }
+                      }}
+                      className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3.5"
+                    >
+                      <div className="font-semibold text-xs text-slate-200">
+                        Ganti Master Recovery PIN
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300 block">
+                          PIN Saat Ini (6 Digit)
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showOldPin ? 'text' : 'password'}
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={oldPinInput}
+                            onChange={(e) => setOldPinInput(e.target.value.replace(/\D/g, ''))}
+                            placeholder="6 digit PIN lama..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-emerald-500 pr-9 font-mono tracking-widest"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowOldPin(!showOldPin)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                          >
+                            {showOldPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-semibold text-slate-300 block">
+                            PIN Baru (6 Digit Angka)
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showNewPin ? 'text' : 'password'}
+                              inputMode="numeric"
+                              maxLength={6}
+                              value={newPinInput}
+                              onChange={(e) => setNewPinInput(e.target.value.replace(/\D/g, ''))}
+                              placeholder="6 digit angka..."
+                              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-emerald-500 pr-9 font-mono tracking-widest"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowNewPin(!showNewPin)}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                            >
+                              {showNewPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-semibold text-slate-300 block">
+                            Konfirmasi PIN Baru
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showConfirmPin ? 'text' : 'password'}
+                              inputMode="numeric"
+                              maxLength={6}
+                              value={confirmPinInput}
+                              onChange={(e) => setConfirmPinInput(e.target.value.replace(/\D/g, ''))}
+                              placeholder="Ulangi 6 digit..."
+                              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-emerald-500 pr-9 font-mono tracking-widest"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowConfirmPin(!showConfirmPin)}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                            >
+                              {showConfirmPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowPinForm(false)}
+                          className="px-3.5 py-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isSavingPin}
+                          className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                        >
+                          {isSavingPin && <Loader2 className="w-3 h-3 animate-spin" />}
+                          <span>Simpan Recovery PIN</span>
+                        </button>
+                      </div>
+                    </form>
+                  )
                 )}
               </div>
 

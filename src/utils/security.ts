@@ -277,18 +277,18 @@ export async function verifyMasterRecoveryPin(
 }
 
 /**
- * Check if Master Recovery PIN is configured in security settings
+ * Check if Master Recovery PIN is configured in security settings based on valid PBKDF2 SHA-256 hash
  */
 export function isMasterRecoveryPinConfigured(securitySettings?: {
   masterPinHash?: string;
   masterPinSalt?: string;
   isMasterPinSet?: boolean;
 } | null): boolean {
-  return Boolean(
-    securitySettings?.isMasterPinSet &&
-      isValidPbkdf2Hash(securitySettings?.masterPinHash) &&
-      isValidPbkdf2Salt(securitySettings?.masterPinSalt)
-  );
+  if (!securitySettings) return false;
+  const isSet = Boolean(securitySettings.isMasterPinSet);
+  const hasValidHash = isValidPbkdf2Hash(securitySettings.masterPinHash);
+  const hasValidSalt = isValidPbkdf2Salt(securitySettings.masterPinSalt);
+  return isSet && hasValidHash && hasValidSalt;
 }
 
 /**
