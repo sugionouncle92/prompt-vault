@@ -81,6 +81,22 @@ export async function verifyFolderKey(
 }
 
 /**
+ * Validate whether a string is a valid PBKDF2-SHA256 hex hash (64 hex characters)
+ */
+export function isValidPbkdf2Hash(hash?: string | null): boolean {
+  if (!hash || typeof hash !== 'string') return false;
+  return /^[0-9a-fA-F]{64}$/.test(hash.trim());
+}
+
+/**
+ * Validate whether a string is a valid PBKDF2 salt hex (at least 32 hex characters = 16 bytes)
+ */
+export function isValidPbkdf2Salt(salt?: string | null): boolean {
+  if (!salt || typeof salt !== 'string') return false;
+  return /^[0-9a-fA-F]{32,}$/.test(salt.trim());
+}
+
+/**
  * Hash Master Folder Password with PBKDF2-SHA256
  */
 export async function hashMasterFolderPassword(
@@ -104,50 +120,33 @@ export async function verifyMasterFolderPassword(
 }
 
 /**
- * Check if Master Folder Password is configured
+ * Check if Master Folder Password is genuinely configured with a valid PBKDF2 SHA-256 hash
  */
 export function isMasterFolderPasswordConfigured(securitySettings?: {
   masterFolderPasswordHash?: string;
   masterFolderPasswordSalt?: string;
   isMasterFolderPasswordSet?: boolean;
-  vaultAccessKeyHash?: string;
-  vaultAccessKeySalt?: string;
 } | null): boolean {
-  if (
-    securitySettings?.isMasterFolderPasswordSet &&
-    securitySettings?.masterFolderPasswordHash &&
-    securitySettings?.masterFolderPasswordSalt
-  ) {
-    return true;
-  }
-  if (
-    securitySettings?.vaultAccessKeyHash &&
-    securitySettings?.vaultAccessKeySalt
-  ) {
-    return true;
-  }
-  return false;
+  if (!securitySettings) return false;
+  const hasValidHash = isValidPbkdf2Hash(securitySettings.masterFolderPasswordHash);
+  const hasValidSalt = isValidPbkdf2Salt(securitySettings.masterFolderPasswordSalt);
+  return hasValidHash && hasValidSalt && securitySettings.isMasterFolderPasswordSet !== false;
 }
 
 export function getEffectiveMasterFolderCredentials(securitySettings?: {
   masterFolderPasswordHash?: string;
   masterFolderPasswordSalt?: string;
-  vaultAccessKeyHash?: string;
-  vaultAccessKeySalt?: string;
 } | null): {
   hash?: string;
   salt?: string;
 } {
-  if (securitySettings?.masterFolderPasswordHash && securitySettings?.masterFolderPasswordSalt) {
+  if (
+    isValidPbkdf2Hash(securitySettings?.masterFolderPasswordHash) &&
+    isValidPbkdf2Salt(securitySettings?.masterFolderPasswordSalt)
+  ) {
     return {
-      hash: securitySettings.masterFolderPasswordHash,
-      salt: securitySettings.masterFolderPasswordSalt,
-    };
-  }
-  if (securitySettings?.vaultAccessKeyHash && securitySettings?.vaultAccessKeySalt) {
-    return {
-      hash: securitySettings.vaultAccessKeyHash,
-      salt: securitySettings.vaultAccessKeySalt,
+      hash: securitySettings!.masterFolderPasswordHash!.trim(),
+      salt: securitySettings!.masterFolderPasswordSalt!.trim(),
     };
   }
   return {};
@@ -287,8 +286,8 @@ export function isMasterRecoveryPinConfigured(securitySettings?: {
 } | null): boolean {
   return Boolean(
     securitySettings?.isMasterPinSet &&
-      securitySettings?.masterPinHash &&
-      securitySettings?.masterPinSalt
+      isValidPbkdf2Hash(securitySettings?.masterPinHash) &&
+      isValidPbkdf2Salt(securitySettings?.masterPinSalt)
   );
 }
 

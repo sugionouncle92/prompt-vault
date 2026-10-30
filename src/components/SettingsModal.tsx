@@ -34,7 +34,7 @@ import {
   Clock,
   Folder,
 } from 'lucide-react';
-import { AppSettings, saveSettingsToFirebase, AppSecuritySettings } from '../services/firebaseService';
+import { AppSettings, saveSettingsToFirebase, fetchSettingsFromFirebase, AppSecuritySettings } from '../services/firebaseService';
 import { FolderItem, FOLDER_COLORS } from '../types';
 import appLogo from '../assets/logo-192.png';
 import { usePWA } from '../hooks/usePWA';
@@ -86,8 +86,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [pwaInstallMessage, setPwaInstallMessage] = useState<string | null>(null);
   const [isTestingPWADiag, setIsTestingPWADiag] = useState(false);
 
-  // --- Master Folder Password State ---
-  const isMasterPasswordSet = isMasterFolderPasswordConfigured(settings.security);
+  // --- Master Folder Password & Security State ---
+  const [isVerifyingSecurityConfig, setIsVerifyingSecurityConfig] = useState(true);
+  const [verifiedSecuritySettings, setVerifiedSecuritySettings] = useState<AppSecuritySettings | null>(
+    settings.security || null
+  );
+
+  // Synchronize and verify against actual stored configuration
+  useEffect(() => {
+    let isMounted = true;
+    const verifySecurityStatus = async () => {
+      setIsVerifyingSecurityConfig(true);
+      try {
+        const freshSettings = await fetchSettingsFromFirebase();
+        if (isMounted) {
+          setVerifiedSecuritySettings(freshSettings.security || null);
+          setIsVerifyingSecurityConfig(false);
+        }
+      } catch (err) {
+        console.warn('[SettingsModal] Error verifying security configuration from server:', err);
+        if (isMounted) {
+          setVerifiedSecuritySettings(settings.security || null);
+          setIsVerifyingSecurityConfig(false);
+        }
+      }
+    };
+
+    verifySecurityStatus();
+    return () => {
+      isMounted = false;
+    };
+  }, [settings.security]);
+
+  const activeSecurity = verifiedSecuritySettings || settings.security;
+  const isMasterPasswordSet = isMasterFolderPasswordConfigured(activeSecurity);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [oldPasswordInput, setOldPasswordInput] = useState('');
   const [newPasswordInput, setNewPasswordInput] = useState('');
@@ -100,7 +132,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   // --- Master Recovery PIN State ---
-  const isPinSet = isMasterRecoveryPinConfigured(settings.security);
+  const isPinSet = isMasterRecoveryPinConfigured(activeSecurity);
   const [showPinForm, setShowPinForm] = useState(false);
   const [oldPinInput, setOldPinInput] = useState('');
   const [newPinInput, setNewPinInput] = useState('');
@@ -115,10 +147,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Helper to update security settings
   const updateSecuritySetting = (patch: Partial<AppSecuritySettings>) => {
     const updatedSecurity: AppSecuritySettings = {
-      ...(settings.security || {}),
+      ...(activeSecurity || {}),
       ...patch,
       updatedAt: new Date().toISOString(),
     };
+    setVerifiedSecuritySettings(updatedSecurity);
     const updatedSettings: AppSettings = {
       ...settings,
       security: updatedSecurity,
@@ -741,7 +774,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </span>
                   </h3>
                   <p className="text-xs text-slate-400 leading-relaxed">
-                    Aplikasi PromptVault bebas dibuka tanpa kunci global. Anda dapat melindungi folder tertentu secara individual menggunakan <strong>Satu Master Folder Password</strong> dengan 2 metode pemulihan darurat independen (Recovery PIN &amp; Email OTP).
+                    Aplikasi PromptVault bebas dibuka tanpa kunci global. Anda dapat melindungi folder tertentu secara individual menggunakan <strong>Satu Master Folder Password</strong> dengan metode pemulihan darurat <strong>Master Recovery PIN</strong>.
                   </p>
                 </div>
               </div>
@@ -764,25 +797,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`text-xs px-2.5 py-1 rounded-full border font-semibold flex items-center gap-1.5 ${
-                        isMasterPasswordSet
-                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                          : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-                      }`}
-                    >
-                      {isMasterPasswordSet ? (
-                        <>
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Aktif &amp; Terkonfigurasi</span>
-                        </>
-                      ) : (
-                        <>
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          <span>Belum Dibuat</span>
-                        </>
-                      )}
-                    </span>
+                    {isVerifyingSecurityConfig ? (
+                      <span className="text-xs px-2.5 py-1 rounded-full border border-slate-700 bg-slate-800/80 text-slate-400 font-semibold flex items-center gap-1.5">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                        <span>Memverifikasi...</span>
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-xs px-2.5 py-1 rounded-full border font-semibold flex items-center gap-1.5 ${
+                          isMasterPasswordSet
+                            ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                            : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                        }`}
+                      >
+                        {isMasterPasswordSet ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Aktif &amp; Terkonfigurasi</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span>Belum Dibuat</span>
+                          </>
+                        )}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -804,52 +844,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 )}
 
-                {/* Form or Trigger Button */}
-                {!showPasswordForm ? (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPasswordForm(true);
-                        setPasswordError(null);
-                        setPasswordSuccess(null);
-                        setOldPasswordInput('');
-                        setNewPasswordInput('');
-                        setConfirmPasswordInput('');
-                      }}
-                      className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 ${
-                        isMasterPasswordSet
-                          ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                          : 'bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-600/30'
-                      }`}
-                    >
-                      <KeyRound className="w-3.5 h-3.5" />
-                      <span>{isMasterPasswordSet ? 'Ganti Master Folder Password' : 'Buat Master Folder Password'}</span>
-                    </button>
+                {/* Status verification loading */}
+                {isVerifyingSecurityConfig ? (
+                  <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl flex items-center gap-3">
+                    <Loader2 className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
+                    <span className="text-xs text-slate-300">
+                      Memverifikasi status konfigurasi Master Folder Password dari server...
+                    </span>
                   </div>
-                ) : (
+                ) : !isMasterPasswordSet ? (
+                  /* =================================================== */
+                  /* KONDISI 1: BELUM PERNAH DIBUAT (BUAT PERTAMA KALI) */
+                  /* =================================================== */
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
                       setPasswordError(null);
                       setPasswordSuccess(null);
-
-                      if (isMasterPasswordSet) {
-                        const creds = getEffectiveMasterFolderCredentials(settings.security);
-                        if (!oldPasswordInput.trim()) {
-                          setPasswordError('Masukkan password saat ini untuk verifikasi.');
-                          return;
-                        }
-                        const isOldValid = await verifyMasterFolderPassword(
-                          oldPasswordInput.trim(),
-                          creds.hash,
-                          creds.salt
-                        );
-                        if (!isOldValid) {
-                          setPasswordError('Password lama salah. Akses perubahan ditolak.');
-                          return;
-                        }
-                      }
 
                       const np = newPasswordInput.trim();
                       const cp = confirmPasswordInput.trim();
@@ -871,14 +882,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       try {
                         const { masterPasswordHash, masterPasswordSalt } =
                           await hashMasterFolderPassword(np);
-                        updateSecuritySetting({
+                        const newSecurity: Partial<AppSecuritySettings> = {
                           isMasterFolderPasswordSet: true,
                           masterFolderPasswordHash: masterPasswordHash,
                           masterFolderPasswordSalt: masterPasswordSalt,
                           vaultAccessKeyHash: masterPasswordHash,
                           vaultAccessKeySalt: masterPasswordSalt,
-                        });
-                        setPasswordSuccess('Master Folder Password berhasil diperbarui!');
+                        };
+                        updateSecuritySetting(newSecurity);
+                        setPasswordSuccess('Master Folder Password pertama kali berhasil dibuat dan disimpan!');
+                        setNewPasswordInput('');
+                        setConfirmPasswordInput('');
                         setShowPasswordForm(false);
                       } catch (err: any) {
                         setPasswordError(err.message || 'Gagal menyimpan Master Folder Password.');
@@ -886,35 +900,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         setIsSavingPassword(false);
                       }
                     }}
-                    className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3.5"
+                    className="p-4 bg-slate-900 border border-amber-500/30 rounded-xl space-y-3.5"
                   >
-                    <div className="font-semibold text-xs text-slate-200">
-                      {isMasterPasswordSet ? 'Ganti Master Folder Password' : 'Buat Master Folder Password Baru'}
+                    <div className="flex items-center gap-2 font-semibold text-xs text-amber-300">
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>Buat Master Folder Password Baru (Pertama Kali)</span>
                     </div>
-
-                    {isMasterPasswordSet && (
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-semibold text-slate-300 block">
-                          Password Lama
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showOldPassword ? 'text' : 'password'}
-                            value={oldPasswordInput}
-                            onChange={(e) => setOldPasswordInput(e.target.value)}
-                            placeholder="Masukkan password saat ini..."
-                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500 pr-9 font-mono"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowOldPassword(!showOldPassword)}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-                          >
-                            {showOldPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      </div>
-                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
@@ -926,7 +917,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             type={showNewPassword ? 'text' : 'password'}
                             value={newPasswordInput}
                             onChange={(e) => setNewPasswordInput(e.target.value)}
-                            placeholder="Password baru..."
+                            placeholder="Tentukan password baru..."
                             className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500 pr-9 font-mono"
                           />
                           <button
@@ -948,7 +939,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             type={showConfirmPassword ? 'text' : 'password'}
                             value={confirmPasswordInput}
                             onChange={(e) => setConfirmPasswordInput(e.target.value)}
-                            placeholder="Konfirmasi password baru..."
+                            placeholder="Ulangi password baru..."
                             className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500 pr-9 font-mono"
                           />
                           <button
@@ -964,22 +955,191 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     <div className="flex items-center justify-end gap-2 pt-1">
                       <button
-                        type="button"
-                        onClick={() => setShowPasswordForm(false)}
-                        className="px-3.5 py-1.5 text-xs text-slate-400 hover:text-white transition-colors"
-                      >
-                        Batal
-                      </button>
-                      <button
                         type="submit"
-                        disabled={isSavingPassword}
-                        className="px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                        disabled={isSavingPassword || !newPasswordInput.trim() || !confirmPasswordInput.trim()}
+                        className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded-xl shadow-lg shadow-amber-600/20 transition-all flex items-center gap-1.5"
                       >
                         {isSavingPassword && <Loader2 className="w-3 h-3 animate-spin" />}
                         <span>Simpan Password</span>
                       </button>
                     </div>
                   </form>
+                ) : (
+                  /* =================================================== */
+                  /* KONDISI 2: SUDAH TERDAFTAR (GANTI PASSWORD)         */
+                  /* =================================================== */
+                  !showPasswordForm ? (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPasswordForm(true);
+                          setPasswordError(null);
+                          setPasswordSuccess(null);
+                          setOldPasswordInput('');
+                          setNewPasswordInput('');
+                          setConfirmPasswordInput('');
+                        }}
+                        className="px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                      >
+                        <KeyRound className="w-3.5 h-3.5" />
+                        <span>Ganti Master Folder Password</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        setPasswordError(null);
+                        setPasswordSuccess(null);
+
+                        const creds = getEffectiveMasterFolderCredentials(activeSecurity);
+                        if (!oldPasswordInput.trim()) {
+                          setPasswordError('Masukkan password lama saat ini untuk verifikasi.');
+                          return;
+                        }
+                        const isOldValid = await verifyMasterFolderPassword(
+                          oldPasswordInput.trim(),
+                          creds.hash,
+                          creds.salt
+                        );
+                        if (!isOldValid) {
+                          setPasswordError('Password lama salah. Akses perubahan ditolak.');
+                          return;
+                        }
+
+                        const np = newPasswordInput.trim();
+                        const cp = confirmPasswordInput.trim();
+
+                        if (!np) {
+                          setPasswordError('Password baru tidak boleh kosong.');
+                          return;
+                        }
+                        if (np.length < 4) {
+                          setPasswordError('Password baru minimal 4 karakter.');
+                          return;
+                        }
+                        if (np !== cp) {
+                          setPasswordError('Konfirmasi password tidak cocok.');
+                          return;
+                        }
+
+                        setIsSavingPassword(true);
+                        try {
+                          const { masterPasswordHash, masterPasswordSalt } =
+                            await hashMasterFolderPassword(np);
+                          const updatedSecurity: Partial<AppSecuritySettings> = {
+                            isMasterFolderPasswordSet: true,
+                            masterFolderPasswordHash: masterPasswordHash,
+                            masterFolderPasswordSalt: masterPasswordSalt,
+                            vaultAccessKeyHash: masterPasswordHash,
+                            vaultAccessKeySalt: masterPasswordSalt,
+                          };
+                          updateSecuritySetting(updatedSecurity);
+                          setPasswordSuccess('Master Folder Password berhasil diperbarui!');
+                          setShowPasswordForm(false);
+                          setOldPasswordInput('');
+                          setNewPasswordInput('');
+                          setConfirmPasswordInput('');
+                        } catch (err: any) {
+                          setPasswordError(err.message || 'Gagal menyimpan Master Folder Password.');
+                        } finally {
+                          setIsSavingPassword(false);
+                        }
+                      }}
+                      className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3.5"
+                    >
+                      <div className="font-semibold text-xs text-slate-200">
+                        Ganti Master Folder Password
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300 block">
+                          Password Lama
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showOldPassword ? 'text' : 'password'}
+                            value={oldPasswordInput}
+                            onChange={(e) => setOldPasswordInput(e.target.value)}
+                            placeholder="Masukkan password saat ini..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500 pr-9 font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowOldPassword(!showOldPassword)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                          >
+                            {showOldPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-semibold text-slate-300 block">
+                            Password Baru (Min. 4 Karakter)
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showNewPassword ? 'text' : 'password'}
+                              value={newPasswordInput}
+                              onChange={(e) => setNewPasswordInput(e.target.value)}
+                              placeholder="Password baru..."
+                              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500 pr-9 font-mono"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowNewPassword(!showNewPassword)}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                            >
+                              {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-semibold text-slate-300 block">
+                            Konfirmasi Password Baru
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showConfirmPassword ? 'text' : 'password'}
+                              value={confirmPasswordInput}
+                              onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                              placeholder="Konfirmasi password baru..."
+                              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500 pr-9 font-mono"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                            >
+                              {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowPasswordForm(false)}
+                          className="px-3.5 py-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isSavingPassword}
+                          className="px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                        >
+                          {isSavingPassword && <Loader2 className="w-3 h-3 animate-spin" />}
+                          <span>Simpan Password</span>
+                        </button>
+                      </div>
+                    </form>
+                  )
                 )}
               </div>
 
