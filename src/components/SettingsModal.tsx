@@ -41,6 +41,7 @@ import {
   DEFAULT_TYPOGRAPHY,
   applyTypographyToDocument,
   getFontFamilyStack,
+  getStoredTypography,
 } from '../utils/typography';
 import appLogo from '../assets/logo-192.png';
 import { usePWA } from '../hooks/usePWA';
@@ -164,7 +165,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   // Helper to handle partial updates and auto-sync to Firebase
   // --- Typography Handlers & Realtime Sync ---
-  const currentTypography: TypographySettings = settings.typography || DEFAULT_TYPOGRAPHY;
+  const fallbackTypo = getStoredTypography();
+  const currentTypography: TypographySettings = {
+    fontFamily: settings.typography?.fontFamily || fallbackTypo.fontFamily || DEFAULT_TYPOGRAPHY.fontFamily,
+    fontSize: (settings.typography?.fontSize || fallbackTypo.fontSize || DEFAULT_TYPOGRAPHY.fontSize) as AppFontSize,
+  };
 
   const handleFontFamilyChange = (fontFamily: AppFontFamily) => {
     const nextTypography: TypographySettings = {
@@ -531,6 +536,290 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     className="w-8 h-8 rounded border-none bg-transparent cursor-pointer"
                   />
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: TYPOGRAPHY & GLOBAL FONT SETTINGS */}
+          {activeTab === 'typography' && (
+            <div className="space-y-6">
+              {/* Header Card with Reset to Default */}
+              <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                    <Type className="w-5 h-5 shrink-0" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                      Modern Typography & Global Font Engine
+                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30">
+                        v2.1
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Sesuaikan jenis font dan skala ukuran teks antarmuka PromptVault secara global.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={handleResetTypography}
+                    className="px-3 py-1.5 rounded-lg border border-slate-700/80 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-all shadow-sm"
+                    title="Kembalikan jenis font ke Inter dan ukuran ke 16px (M)"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Reset ke Bawaan</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 1. FONT FAMILY SELECTION */}
+              <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-bold text-slate-100 uppercase tracking-wider block">
+                      A. Jenis Font (Font Family)
+                    </label>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Pilih font sistem antarmuka utama. Font aktif: <span className="font-semibold text-indigo-400">{currentTypography.fontFamily}</span>
+                    </p>
+                  </div>
+                  <span className="text-[11px] px-2 py-0.5 bg-slate-800/90 text-slate-300 rounded-md border border-slate-700">
+                    5 Pilihan
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {FONT_FAMILY_OPTIONS.map((font) => {
+                    const isSelected = currentTypography.fontFamily === font.id;
+                    return (
+                      <button
+                        key={font.id}
+                        type="button"
+                        onClick={() => handleFontFamilyChange(font.id)}
+                        className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
+                          isSelected
+                            ? 'border-indigo-500 bg-indigo-500/10 ring-1 ring-indigo-500/50 shadow-md shadow-indigo-500/10'
+                            : 'border-slate-800 bg-slate-900/60 hover:border-slate-700 hover:bg-slate-900 text-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="text-sm font-bold text-slate-100"
+                              style={{ fontFamily: font.stack }}
+                            >
+                              {font.name}
+                            </span>
+                            {font.id === 'Inter' && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30 font-medium">
+                                Default
+                              </span>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <span className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center">
+                              <Check className="w-3 h-3 stroke-[3]" />
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-[11px] text-slate-400 mb-2 leading-relaxed">
+                          {font.description}
+                        </p>
+
+                        <div
+                          className="mt-auto px-2.5 py-1.5 rounded-lg bg-slate-950/70 border border-slate-800/80 text-xs text-slate-200 truncate tracking-wide"
+                          style={{ fontFamily: font.stack }}
+                        >
+                          {font.previewText}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. FONT SIZE SELECTION */}
+              <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-bold text-slate-100 uppercase tracking-wider block">
+                      B. Ukuran Font Global (Font Size Scale)
+                    </label>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Skala ukuran dasar teks antarmuka. Ukuran aktif: <span className="font-semibold text-indigo-400">{currentTypography.fontSize}px ({FONT_SIZE_OPTIONS.find(o => o.size === currentTypography.fontSize)?.name || 'M'})</span>
+                    </p>
+                  </div>
+                  <span className="text-[11px] px-2 py-0.5 bg-slate-800/90 text-slate-300 rounded-md border border-slate-700">
+                    7 Tingkat
+                  </span>
+                </div>
+
+                {/* Segmented Grid for XS - XXXL */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+                  {FONT_SIZE_OPTIONS.map((option) => {
+                    const isSelected = currentTypography.fontSize === option.size;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => handleFontSizeChange(option.size)}
+                        className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center justify-between relative ${
+                          isSelected
+                            ? 'border-indigo-500 bg-indigo-500/15 ring-1 ring-indigo-500/50 shadow-md shadow-indigo-500/10'
+                            : 'border-slate-800 bg-slate-900/60 hover:border-slate-700 hover:bg-slate-900 text-slate-300'
+                        }`}
+                      >
+                        <span className="text-xs font-bold text-slate-100 mb-1">
+                          {option.name}
+                        </span>
+
+                        <span
+                          className="font-bold my-1 text-slate-200 transition-all"
+                          style={{
+                            fontSize: `${option.size}px`,
+                            lineHeight: 1,
+                            fontFamily: getFontFamilyStack(currentTypography.fontFamily),
+                          }}
+                        >
+                          Aa
+                        </span>
+
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950/70 border border-slate-800 text-slate-400 mt-1">
+                          {option.size}px
+                        </span>
+
+                        {option.size === 16 && (
+                          <span className="text-[9px] text-indigo-400 mt-1 font-medium">
+                            Default
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. LIVE TYPOGRAPHY PREVIEW SANDBOX */}
+              <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-indigo-400" />
+                    <label className="text-xs font-bold text-slate-100 uppercase tracking-wider block">
+                      C. Live Typography Preview (Pratinjau Nyata)
+                    </label>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-1 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Realtime Sync
+                  </span>
+                </div>
+
+                <div
+                  className="p-4 rounded-xl border border-slate-800 bg-slate-900/90 space-y-4 shadow-inner"
+                  style={{
+                    fontFamily: getFontFamilyStack(currentTypography.fontFamily),
+                  }}
+                >
+                  {/* Heading & Subheading */}
+                  <div className="border-b border-slate-800/80 pb-3 space-y-1">
+                    <h2
+                      className="font-bold text-slate-100 tracking-tight"
+                      style={{ fontSize: `calc(${currentTypography.fontSize}px * 1.35)` }}
+                    >
+                      Heading 1 — Koleksi Prompt AI PromptVault
+                    </h2>
+                    <h3
+                      className="font-medium text-slate-400"
+                      style={{ fontSize: `calc(${currentTypography.fontSize}px * 1.05)` }}
+                    >
+                      Subheading — Manajemen prompt cerdas dengan sinkronisasi realtime Firebase.
+                    </h3>
+                  </div>
+
+                  {/* Body Text */}
+                  <div className="border-b border-slate-800/80 pb-3">
+                    <p
+                      className="text-slate-300 leading-relaxed"
+                      style={{ fontSize: `${currentTypography.fontSize}px` }}
+                    >
+                      Body Text — PromptVault v2.1 menghadirkan pengalaman visual yang tajam, proporsional, dan nyaman di semua resolusi layar. Semua perubahan font dan ukuran diaplikasikan secara instan ke seluruh antarmuka.
+                    </p>
+                  </div>
+
+                  {/* Caption & Metadata */}
+                  <div className="border-b border-slate-800/80 pb-3 flex flex-wrap items-center justify-between gap-2 text-slate-400">
+                    <span
+                      className="text-slate-400"
+                      style={{ fontSize: `calc(${currentTypography.fontSize}px * 0.78)` }}
+                    >
+                      Caption: Diperbarui 31 Oktober 2026 • 17.076 karakter • Cloud Firestore
+                    </span>
+                    <span
+                      className="text-indigo-400 font-medium"
+                      style={{ fontSize: `calc(${currentTypography.fontSize}px * 0.78)` }}
+                    >
+                      Font Aktif: {currentTypography.fontFamily} ({currentTypography.fontSize}px)
+                    </span>
+                  </div>
+
+                  {/* Buttons & Input Preview */}
+                  <div className="space-y-2 pt-1">
+                    <label
+                      className="text-slate-400 font-semibold block text-xs"
+                      style={{ fontSize: `calc(${currentTypography.fontSize}px * 0.75)` }}
+                    >
+                      Form Input & Action Buttons Preview:
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <input
+                        type="text"
+                        readOnly
+                        value="Contoh input teks dengan tipografi aktif..."
+                        className="flex-1 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700/80 text-slate-200 outline-none select-none"
+                        style={{
+                          fontFamily: getFontFamilyStack(currentTypography.fontFamily),
+                          fontSize: `${currentTypography.fontSize}px`,
+                        }}
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all shadow-md shadow-indigo-600/20"
+                          style={{
+                            fontFamily: getFontFamilyStack(currentTypography.fontFamily),
+                            fontSize: `${currentTypography.fontSize}px`,
+                          }}
+                        >
+                          Simpan Prompt
+                        </button>
+                        <span
+                          className="px-3 py-1.5 rounded-lg bg-indigo-950/60 border border-indigo-700/50 text-indigo-300 font-medium"
+                          style={{
+                            fontFamily: getFontFamilyStack(currentTypography.fontFamily),
+                            fontSize: `calc(${currentTypography.fontSize}px * 0.82)`,
+                          }}
+                        >
+                          #midjourney
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status and Auto-save notification */}
+              <div className="p-3.5 bg-slate-950/60 border border-slate-800 rounded-xl flex items-center justify-between text-xs text-slate-400">
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Pengaturan tipografi disimpan otomatis ke Firebase & LocalStorage</span>
+                </div>
+                <span className="text-[11px] text-slate-500">
+                  {saveStatus === 'saving' ? 'Menyimpan...' : saveStatus === 'saved' ? 'Tersimpan' : 'Siap'}
+                </span>
               </div>
             </div>
           )}
