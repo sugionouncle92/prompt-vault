@@ -51,6 +51,20 @@ export type ViewMode = 'grid' | 'list' | 'compact';
 
 export type AppTheme = 'dark' | 'light';
 
+export type AppFontFamily =
+  | 'Inter'
+  | 'Plus Jakarta Sans'
+  | 'SF Pro Display'
+  | 'Poppins'
+  | 'Roboto';
+
+export type AppFontSize = 12 | 14 | 16 | 18 | 20 | 22 | 24;
+
+export interface TypographySettings {
+  fontFamily: AppFontFamily;
+  fontSize: AppFontSize;
+}
+
 export type SortOption =
   | 'newest'
   | 'oldest'

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   X,
+  Type,
   Sliders,
   Moon,
   Sun,
@@ -33,7 +34,14 @@ import {
   Folder,
 } from 'lucide-react';
 import { AppSettings, saveSettingsToFirebase, fetchSettingsFromFirebase, AppSecuritySettings } from '../services/firebaseService';
-import { FolderItem, FOLDER_COLORS } from '../types';
+import { FolderItem, FOLDER_COLORS, AppFontFamily, AppFontSize, TypographySettings } from '../types';
+import {
+  FONT_FAMILY_OPTIONS,
+  FONT_SIZE_OPTIONS,
+  DEFAULT_TYPOGRAPHY,
+  applyTypographyToDocument,
+  getFontFamilyStack,
+} from '../utils/typography';
 import appLogo from '../assets/logo-192.png';
 import { usePWA } from '../hooks/usePWA';
 import {
@@ -64,7 +72,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isFirebaseConnected,
   onRetryFirebase,
 }) => {
-  const [activeTab, setActiveTab] = useState<'theme' | 'gallery' | 'ai' | 'upload' | 'security' | 'preferences' | 'pwa'>('theme');
+  const [activeTab, setActiveTab] = useState<'theme' | 'typography' | 'gallery' | 'ai' | 'upload' | 'security' | 'preferences' | 'pwa'>('theme');
   const [accentColor, setAccentColor] = useState('#6366f1');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const {
@@ -155,6 +163,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
 
   // Helper to handle partial updates and auto-sync to Firebase
+  // --- Typography Handlers & Realtime Sync ---
+  const currentTypography: TypographySettings = settings.typography || DEFAULT_TYPOGRAPHY;
+
+  const handleFontFamilyChange = (fontFamily: AppFontFamily) => {
+    const nextTypography: TypographySettings = {
+      ...currentTypography,
+      fontFamily,
+    };
+    applyTypographyToDocument(nextTypography);
+    const updatedSettings: AppSettings = {
+      ...settings,
+      typography: nextTypography,
+    };
+    onUpdateSettings(updatedSettings);
+    triggerAutoSave(updatedSettings);
+  };
+
+  const handleFontSizeChange = (fontSize: AppFontSize) => {
+    const nextTypography: TypographySettings = {
+      ...currentTypography,
+      fontSize,
+    };
+    applyTypographyToDocument(nextTypography);
+    const updatedSettings: AppSettings = {
+      ...settings,
+      typography: nextTypography,
+    };
+    onUpdateSettings(updatedSettings);
+    triggerAutoSave(updatedSettings);
+  };
+
+  const handleResetTypography = () => {
+    applyTypographyToDocument(DEFAULT_TYPOGRAPHY);
+    const updatedSettings: AppSettings = {
+      ...settings,
+      typography: DEFAULT_TYPOGRAPHY,
+    };
+    onUpdateSettings(updatedSettings);
+    triggerAutoSave(updatedSettings);
+  };
+
   const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     const updated = { ...settings, [key]: value };
     onUpdateSettings(updated);
@@ -256,6 +305,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             >
               <Sun className="w-4 h-4 shrink-0" />
               <span>Tema & Tampilan</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('typography')}
+              className={`shrink-0 relative flex items-center gap-2 py-3 px-4 text-xs font-semibold rounded-t-xl transition-all whitespace-nowrap -mb-px border-b-2 ${
+                activeTab === 'typography'
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+              id="settings-typography-tab-btn"
+            >
+              <Type className="w-4 h-4 text-indigo-400 shrink-0" />
+              <span>Typography</span>
             </button>
 
             <button

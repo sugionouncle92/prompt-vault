@@ -12,7 +12,8 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { FolderItem, PromptItem } from '../types';
+import { FolderItem, PromptItem, TypographySettings } from '../types';
+import { DEFAULT_TYPOGRAPHY } from '../utils/typography';
 import { compressBase64Image, sortFoldersByName } from '../utils/storage';
 
 /**
@@ -102,6 +103,7 @@ export interface AppSettings {
     gridColumns: number;
     cardStyle: 'bordered' | 'glass' | 'flat';
   };
+  typography?: TypographySettings;
   workspaceRevision?: number;
   lastPage: string;
   updatedAt?: string;
@@ -153,6 +155,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     gridColumns: 3,
     cardStyle: 'bordered',
   },
+  typography: DEFAULT_TYPOGRAPHY,
   security: {
     isGlobalAppLockEnabled: false, // v2.1: No global app lock
     isVaultAccessKeyEnabled: false,

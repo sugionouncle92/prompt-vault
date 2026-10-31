@@ -56,6 +56,12 @@ import {
   applyThemeToDocument,
 } from './utils/storage';
 import { AppTheme } from './types';
+import {
+  getStoredTypography,
+  saveStoredTypography,
+  applyTypographyToDocument,
+  DEFAULT_TYPOGRAPHY,
+} from './utils/typography';
 import { RestoreMode, PreRestoreSnapshot } from './utils/backupRestore';
 import {
   Plus,
@@ -80,6 +86,7 @@ export default function App() {
   const [appSettings, setAppSettings] = useState<AppSettings>(() => ({
     ...DEFAULT_APP_SETTINGS,
     theme: getStoredTheme(),
+    typography: getStoredTypography(),
   }));
 
   // Firebase connection & restore state
@@ -215,6 +222,13 @@ export default function App() {
     applyThemeToDocument(currentTheme);
   }, [appSettings.theme]);
 
+  // Immediate typography synchronization
+  useEffect(() => {
+    const currentTypo = appSettings.typography || DEFAULT_TYPOGRAPHY;
+    saveStoredTypography(currentTypo);
+    applyTypographyToDocument(currentTypo);
+  }, [appSettings.typography]);
+
   // Handler for instant theme toggling from Navbar or Quick controls
   const handleToggleTheme = () => {
     const nextTheme: AppTheme = appSettings.theme === 'light' ? 'dark' : 'light';
@@ -237,6 +251,10 @@ export default function App() {
     if (newSettings.theme && newSettings.theme !== appSettings.theme) {
       saveStoredTheme(newSettings.theme);
       applyThemeToDocument(newSettings.theme);
+    }
+    if (newSettings.typography) {
+      saveStoredTypography(newSettings.typography);
+      applyTypographyToDocument(newSettings.typography);
     }
     setAppSettings(newSettings);
     await saveSettingsToFirebase(newSettings);
@@ -372,11 +390,15 @@ export default function App() {
         const restoredSettings = await fetchSettingsFromFirebase();
         const localTheme = getStoredTheme();
         const effectiveTheme = localTheme || restoredSettings.theme || 'dark';
+        const localTypography = getStoredTypography();
+        const effectiveTypography = restoredSettings.typography || localTypography || DEFAULT_TYPOGRAPHY;
         setAppSettings({
           ...restoredSettings,
           theme: effectiveTheme,
+          typography: effectiveTypography,
         });
         applyThemeToDocument(effectiveTheme);
+        applyTypographyToDocument(effectiveTypography);
 
         // Apply saved viewMode & sortBy preferences, but ensure Prompt Favorit is the default landing page on every launch/reload
         if (restoredSettings) {
@@ -403,10 +425,13 @@ export default function App() {
           (newSettings) => {
             const currentLocalTheme = getStoredTheme();
             const effTheme = currentLocalTheme || newSettings.theme || 'dark';
+            const effTypography = newSettings.typography || getStoredTypography() || DEFAULT_TYPOGRAPHY;
             setAppSettings({
               ...newSettings,
               theme: effTheme,
+              typography: effTypography,
             });
+            applyTypographyToDocument(effTypography);
             setIsFirebaseConnected(true);
           },
           (err) => {

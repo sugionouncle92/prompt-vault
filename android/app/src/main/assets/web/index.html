@@ -6,6 +6,11 @@
     <title>PromptVault — AI Prompt Manager & Security Vault</title>
     <meta name="description" content="Simpan, kelola, organisir, dan cari prompt AI beserta screenshot referensi dengan enkripsi Access Key & sinkronisasi cloud realtime." />
 
+    <!-- Google Fonts for Modern Typography System -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
+
     <!-- Web App Manifest for Android PWA -->
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
@@ -41,6 +46,33 @@
       })();
     </script>
 
+    <!-- Early Typography Initializer to prevent layout / font shift on reload -->
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('promptvault_typography');
+          if (saved) {
+            var parsed = JSON.parse(saved);
+            var fontMap = {
+              'Inter': "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+              'Plus Jakarta Sans': "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+              'SF Pro Display': "'SF Pro Display', -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif",
+              'Poppins': "'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+              'Roboto': "'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif"
+            };
+            var stack = fontMap[parsed.fontFamily] || fontMap['Inter'];
+            var size = parsed.fontSize ? parsed.fontSize + 'px' : '16px';
+            document.documentElement.style.setProperty('--app-font-family', stack);
+            document.documentElement.style.setProperty('--app-font-size', size);
+            document.documentElement.style.fontSize = size;
+            document.documentElement.style.fontFamily = stack;
+            document.documentElement.setAttribute('data-font', (parsed.fontFamily || 'inter').toLowerCase().replace(/\s+/g, '-'));
+            document.documentElement.setAttribute('data-font-size', String(parsed.fontSize || 16));
+          }
+        } catch (e) {}
+      })();
+    </script>
+
     <!-- Early BeforeInstallPrompt capture script to ensure event is never missed -->
     <script>
       window.addEventListener('beforeinstallprompt', function (e) {
@@ -48,8 +80,8 @@
         window.__deferredInstallPrompt = e;
       });
     </script>
-    <script type="module" crossorigin src="./assets/index-atswbsXX.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DqyFtTWs.css">
+    <script type="module" crossorigin src="./assets/index-D34lSd0_.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-XA3smPLQ.css">
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white">
     <div id="root"></div>
