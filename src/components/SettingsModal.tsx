@@ -166,15 +166,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Helper to handle partial updates and auto-sync to Firebase
   // --- Typography Handlers & Realtime Sync ---
   const fallbackTypo = getStoredTypography();
-  const currentTypography: TypographySettings = {
-    fontFamily: settings.typography?.fontFamily || fallbackTypo.fontFamily || DEFAULT_TYPOGRAPHY.fontFamily,
-    fontSize: (settings.typography?.fontSize || fallbackTypo.fontSize || DEFAULT_TYPOGRAPHY.fontSize) as AppFontSize,
-  };
+  const [selectedFontFamily, setSelectedFontFamily] = useState<AppFontFamily>(() => {
+    return settings.typography?.fontFamily || fallbackTypo.fontFamily || DEFAULT_TYPOGRAPHY.fontFamily;
+  });
+  const [selectedFontSize, setSelectedFontSize] = useState<AppFontSize>(() => {
+    return (settings.typography?.fontSize || fallbackTypo.fontSize || DEFAULT_TYPOGRAPHY.fontSize) as AppFontSize;
+  });
+
+  useEffect(() => {
+    if (settings.typography?.fontFamily) {
+      setSelectedFontFamily(settings.typography.fontFamily);
+    }
+    if (settings.typography?.fontSize) {
+      setSelectedFontSize(settings.typography.fontSize as AppFontSize);
+    }
+  }, [settings.typography]);
 
   const handleFontFamilyChange = (fontFamily: AppFontFamily) => {
     const nextTypography: TypographySettings = {
-      ...currentTypography,
       fontFamily,
+      fontSize: selectedFontSize,
     };
     applyTypographyToDocument(nextTypography);
     const updatedSettings: AppSettings = {
@@ -187,7 +198,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleFontSizeChange = (fontSize: AppFontSize) => {
     const nextTypography: TypographySettings = {
-      ...currentTypography,
+      fontFamily: selectedFontFamily,
       fontSize,
     };
     applyTypographyToDocument(nextTypography);
@@ -200,6 +211,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleResetTypography = () => {
+    setSelectedFontFamily(DEFAULT_TYPOGRAPHY.fontFamily);
+    setSelectedFontSize(DEFAULT_TYPOGRAPHY.fontSize);
     applyTypographyToDocument(DEFAULT_TYPOGRAPHY);
     const updatedSettings: AppSettings = {
       ...settings,
@@ -583,7 +596,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       A. Jenis Font (Font Family)
                     </label>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      Pilih font sistem antarmuka utama. Font aktif: <span className="font-semibold text-indigo-400">{currentTypography.fontFamily}</span>
+                      Pilih font sistem antarmuka utama. Font aktif: <span className="font-semibold text-indigo-400">{selectedFontFamily}</span>
                     </p>
                   </div>
                   <span className="text-[11px] px-2 py-0.5 bg-slate-800/90 text-slate-300 rounded-md border border-slate-700">
@@ -593,7 +606,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {FONT_FAMILY_OPTIONS.map((font) => {
-                    const isSelected = currentTypography.fontFamily === font.id;
+                    const isSelected = selectedFontFamily === font.id;
                     return (
                       <button
                         key={font.id}
@@ -650,7 +663,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       B. Ukuran Font Global (Font Size Scale)
                     </label>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      Skala ukuran dasar teks antarmuka. Ukuran aktif: <span className="font-semibold text-indigo-400">{currentTypography.fontSize}px ({FONT_SIZE_OPTIONS.find(o => o.size === currentTypography.fontSize)?.name || 'M'})</span>
+                      Skala ukuran dasar teks antarmuka. Ukuran aktif: <span className="font-semibold text-indigo-400">{selectedFontSize}px ({FONT_SIZE_OPTIONS.find(o => o.size === selectedFontSize)?.name || 'M'})</span>
                     </p>
                   </div>
                   <span className="text-[11px] px-2 py-0.5 bg-slate-800/90 text-slate-300 rounded-md border border-slate-700">
@@ -661,7 +674,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {/* Segmented Grid for XS - XXXL */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
                   {FONT_SIZE_OPTIONS.map((option) => {
-                    const isSelected = currentTypography.fontSize === option.size;
+                    const isSelected = selectedFontSize === option.size;
                     return (
                       <button
                         key={option.id}
@@ -682,7 +695,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           style={{
                             fontSize: `${option.size}px`,
                             lineHeight: 1,
-                            fontFamily: getFontFamilyStack(currentTypography.fontFamily),
+                            fontFamily: getFontFamilyStack(selectedFontFamily),
                           }}
                         >
                           Aa
@@ -721,20 +734,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div
                   className="p-4 rounded-xl border border-slate-800 bg-slate-900/90 space-y-4 shadow-inner"
                   style={{
-                    fontFamily: getFontFamilyStack(currentTypography.fontFamily),
+                    fontFamily: getFontFamilyStack(selectedFontFamily),
                   }}
                 >
                   {/* Heading & Subheading */}
                   <div className="border-b border-slate-800/80 pb-3 space-y-1">
                     <h2
                       className="font-bold text-slate-100 tracking-tight"
-                      style={{ fontSize: `calc(${currentTypography.fontSize}px * 1.35)` }}
+                      style={{ fontSize: `calc(${selectedFontSize}px * 1.35)` }}
                     >
                       Heading 1 — Koleksi Prompt AI PromptVault
                     </h2>
                     <h3
                       className="font-medium text-slate-400"
-                      style={{ fontSize: `calc(${currentTypography.fontSize}px * 1.05)` }}
+                      style={{ fontSize: `calc(${selectedFontSize}px * 1.05)` }}
                     >
                       Subheading — Manajemen prompt cerdas dengan sinkronisasi realtime Firebase.
                     </h3>
@@ -744,7 +757,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="border-b border-slate-800/80 pb-3">
                     <p
                       className="text-slate-300 leading-relaxed"
-                      style={{ fontSize: `${currentTypography.fontSize}px` }}
+                      style={{ fontSize: `${selectedFontSize}px` }}
                     >
                       Body Text — PromptVault v2.1 menghadirkan pengalaman visual yang tajam, proporsional, dan nyaman di semua resolusi layar. Semua perubahan font dan ukuran diaplikasikan secara instan ke seluruh antarmuka.
                     </p>
@@ -754,15 +767,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="border-b border-slate-800/80 pb-3 flex flex-wrap items-center justify-between gap-2 text-slate-400">
                     <span
                       className="text-slate-400"
-                      style={{ fontSize: `calc(${currentTypography.fontSize}px * 0.78)` }}
+                      style={{ fontSize: `calc(${selectedFontSize}px * 0.78)` }}
                     >
                       Caption: Diperbarui 31 Oktober 2026 • 17.076 karakter • Cloud Firestore
                     </span>
                     <span
                       className="text-indigo-400 font-medium"
-                      style={{ fontSize: `calc(${currentTypography.fontSize}px * 0.78)` }}
+                      style={{ fontSize: `calc(${selectedFontSize}px * 0.78)` }}
                     >
-                      Font Aktif: {currentTypography.fontFamily} ({currentTypography.fontSize}px)
+                      Font Aktif: {selectedFontFamily} ({selectedFontSize}px)
                     </span>
                   </div>
 
@@ -770,7 +783,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="space-y-2 pt-1">
                     <label
                       className="text-slate-400 font-semibold block text-xs"
-                      style={{ fontSize: `calc(${currentTypography.fontSize}px * 0.75)` }}
+                      style={{ fontSize: `calc(${selectedFontSize}px * 0.75)` }}
                     >
                       Form Input & Action Buttons Preview:
                     </label>
@@ -781,8 +794,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         value="Contoh input teks dengan tipografi aktif..."
                         className="flex-1 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700/80 text-slate-200 outline-none select-none"
                         style={{
-                          fontFamily: getFontFamilyStack(currentTypography.fontFamily),
-                          fontSize: `${currentTypography.fontSize}px`,
+                          fontFamily: getFontFamilyStack(selectedFontFamily),
+                          fontSize: `${selectedFontSize}px`,
                         }}
                       />
                       <div className="flex items-center gap-2">
@@ -790,8 +803,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           type="button"
                           className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all shadow-md shadow-indigo-600/20"
                           style={{
-                            fontFamily: getFontFamilyStack(currentTypography.fontFamily),
-                            fontSize: `${currentTypography.fontSize}px`,
+                            fontFamily: getFontFamilyStack(selectedFontFamily),
+                            fontSize: `${selectedFontSize}px`,
                           }}
                         >
                           Simpan Prompt
@@ -799,8 +812,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span
                           className="px-3 py-1.5 rounded-lg bg-indigo-950/60 border border-indigo-700/50 text-indigo-300 font-medium"
                           style={{
-                            fontFamily: getFontFamilyStack(currentTypography.fontFamily),
-                            fontSize: `calc(${currentTypography.fontSize}px * 0.82)`,
+                            fontFamily: getFontFamilyStack(selectedFontFamily),
+                            fontSize: `calc(${selectedFontSize}px * 0.82)`,
                           }}
                         >
                           #midjourney

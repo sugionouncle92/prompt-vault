@@ -967,7 +967,7 @@ export default function App() {
   // The app always opens directly without any app-level lock screen.
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
       {/* Toast Floating Notification */}
       {toastMessage && (
         <div className="fixed bottom-5 right-5 z-50 bg-indigo-600 text-white px-4 py-3 rounded-2xl shadow-2xl border border-indigo-400/30 flex items-center gap-2.5 text-xs font-semibold animate-bounce">

@@ -959,15 +959,27 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
-body, #root {
+@theme {
+  --font-sans: var(--app-font-family);
+}
+
+body, #root, #app, .font-sans, [class*="font-sans"] {
   font-family: var(--app-font-family) !important;
   line-height: var(--app-line-height);
   transition: font-size 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Ensure form controls, inputs, buttons, and popups inherit the global typography */
-input, textarea, select, button, optgroup, option, dialog {
+/* Ensure all text elements, headings, paragraphs, buttons, inputs, selects, textareas inherit the global typography */
+*:not(pre):not(code):not(kbd):not(samp):not(.font-mono):not([class*="font-mono"]) {
   font-family: inherit;
+}
+
+button, input, textarea, select, optgroup, option, dialog {
+  font-family: inherit;
+}
+
+.font-mono, [class*="font-mono"], code, pre, kbd, samp {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
 }
 
 /* Font family specific classes for in-settings preview */

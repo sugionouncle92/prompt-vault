@@ -38,7 +38,7 @@ export const FONT_FAMILY_OPTIONS: FontFamilyOption[] = [
   {
     id: 'SF Pro Display',
     name: 'SF Pro Display',
-    stack: "'SF Pro Display', -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif",
+    stack: "'SF Pro Display', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro', system-ui, sans-serif",
     description: 'Tipografi khas Apple yang presisi, tajam, dan natural di layar modern.',
     previewText: 'Aa Bb Gg 123 • PromptVault AI Studio',
   },
@@ -109,6 +109,13 @@ export function saveStoredTypography(settings: TypographySettings): void {
   }
 }
 
+export function ensureFontLoaded(fontFamily: AppFontFamily): void {
+  if (typeof document === 'undefined') return;
+  if ('fonts' in document && (document as any).fonts?.load) {
+    (document as any).fonts.load(`16px "${fontFamily}"`).catch(() => {});
+  }
+}
+
 /**
  * Apply Typography settings globally to the document root, CSS variables, and design tokens
  */
@@ -125,6 +132,7 @@ export function applyTypographyToDocument(settings?: Partial<TypographySettings>
 
   // 1. Set global design tokens & CSS variables
   root.style.setProperty('--app-font-family', fontStack);
+  root.style.setProperty('--font-sans', fontStack);
   root.style.setProperty('--app-font-size', sizePx);
   root.style.setProperty('--app-line-height', '1.5');
   root.style.setProperty('--app-font-weight-normal', '400');
@@ -143,7 +151,33 @@ export function applyTypographyToDocument(settings?: Partial<TypographySettings>
   if (document.body) {
     document.body.style.fontFamily = fontStack;
   }
+  const appRoot = document.getElementById('root');
+  if (appRoot) {
+    appRoot.style.fontFamily = fontStack;
+  }
 
-  // 4. Save to localStorage fallback
+  // 4. Update or inject dynamic global style tag to enforce font across all components unconditionally
+  let styleTag = document.getElementById('dynamic-typography-style') as HTMLStyleElement | null;
+  if (!styleTag) {
+    styleTag = document.createElement('style');
+    styleTag.id = 'dynamic-typography-style';
+    document.head.appendChild(styleTag);
+  }
+  styleTag.textContent = `
+    :root {
+      --app-font-family: ${fontStack};
+      --font-sans: ${fontStack};
+    }
+    html, body, #root, #app, .font-sans, [class*="font-sans"],
+    h1, h2, h3, h4, h5, h6, p, label, button, input:not(.font-mono):not([class*="font-mono"]),
+    textarea:not(.font-mono):not([class*="font-mono"]), select, option, optgroup, span:not(.font-mono):not([class*="font-mono"]) {
+      font-family: ${fontStack} !important;
+    }
+  `;
+
+  // 5. Asynchronously load font via FontFace API
+  ensureFontLoaded(target.fontFamily);
+
+  // 6. Save to localStorage fallback
   saveStoredTypography(target);
 }
