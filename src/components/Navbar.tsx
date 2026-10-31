@@ -429,7 +429,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     PromptVault
                   </h1>
                   <span className="px-2 py-0.5 text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-full font-mono">
-                    v2.0
+                    v2.1
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400 hidden xl:block">

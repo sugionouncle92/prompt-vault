@@ -1460,20 +1460,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <Smartphone className="w-4 h-4 text-emerald-400" />
                     <span className="text-xs font-bold text-slate-100">Android Release APK (Standalone)</span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      v2.0 • 6.8 MB
+                      v2.1 • 6.9 MB
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 leading-relaxed">
-                    Unduh file APK resmi PromptVault untuk dipasang langsung di perangkat Android.
+                    Unduh file APK resmi PromptVault v2.1 untuk dipasang langsung di perangkat Android.
                   </p>
                 </div>
                 <a
-                  href="./PromptVault-v2.0-release.apk"
-                  download="PromptVault-v2.0-release.apk"
+                  href="./PromptVault-v2.1-release.apk"
+                  download="PromptVault-v2.1-release.apk"
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all active:scale-95 shrink-0"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Unduh APK Release</span>
+                  <span>Unduh APK Release v2.1</span>
                 </a>
               </div>
 

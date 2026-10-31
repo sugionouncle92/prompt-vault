@@ -28,3 +28,5 @@ Thumbs.db
 # Keep release APK for direct download
 !PromptVault-v2.0-release.apk
 !public/PromptVault-v2.0-release.apk
+!PromptVault-v2.1-release.apk
+!public/PromptVault-v2.1-release.apk
